@@ -74,14 +74,15 @@ import com.lanrhyme.micyou.theme.ExpressiveSettingsDropdownItem
 import com.lanrhyme.micyou.theme.ExpressiveSettingsSwitchItem
 import com.lanrhyme.micyou.theme.PaletteStyle
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.rememberHazeState
+import com.lanrhyme.micyou.ui.background.rememberHazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.hazeChild
+import dev.chrisbanes.haze.haze
 import androidx.compose.ui.res.stringResource
 import com.lanrhyme.micyou.audio.AudioFormat
 import com.lanrhyme.micyou.audio.ChannelCount
+import com.lanrhyme.micyou.audio.availableAudioFormats
 import com.lanrhyme.micyou.audio.getAudioSourceOptions
 import com.lanrhyme.micyou.audio.SampleRate
 import com.lanrhyme.micyou.theme.isDynamicColorSupported
@@ -150,7 +151,7 @@ fun MobileSettingsPage(
                     if (state.backgroundSettings.hasCustomBackground) Color.Transparent
                     else backgroundColor
                 )
-                .hazeSource(state = topBarHazeState)
+                .haze(state = topBarHazeState)
         ) {
         LazyColumn(
             modifier = Modifier
@@ -190,7 +191,7 @@ fun MobileSettingsPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .hazeEffect(
+                .hazeChild(
                     state = topBarHazeState,
                     style = HazeStyle(
                         backgroundColor = topBarBackgroundColor,
@@ -711,11 +712,12 @@ private fun LazyListScope.audioSettingsItems(
 
         // 音频格式
         items.add { isFirst, isLast ->
+            val formats = availableAudioFormats()
             ExpressiveAudioDropdownItem(
                 headline = stringResource(R.string.audioFormatLabel),
                 selected = state.audioFormat.label,
-                options = AudioFormat.entries.map { it.label },
-                onSelect = { index -> viewModel.setAudioFormat(AudioFormat.entries[index]) },
+                options = formats.map { it.label },
+                onSelect = { index -> viewModel.setAudioFormat(formats[index]) },
                 enabled = manualSettingsEnabled,
                 isFirst = isFirst,
                 isLast = isLast,

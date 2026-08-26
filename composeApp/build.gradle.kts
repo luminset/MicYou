@@ -3,9 +3,12 @@ import java.io.File
 
 plugins {
     alias(libs.plugins.androidApplication)
+    alias(libs.plugins.kotlinAndroid)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlinSerialization)
 }
+
+val androidCompat = project.hasProperty("micyou.androidCompat")
 
 val aifadianApiToken: String = run {
     val localProps = Properties()
@@ -28,16 +31,27 @@ val aifadianUserId: String = run {
 android {
     namespace = "com.lanrhyme.micyou"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
-    buildToolsVersion = libs.versions.android.buildTools.get()
 
     defaultConfig {
         applicationId = "com.lanrhyme.micyou"
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        targetSdk = libs.versions.android.targetSdk.get().toInt()
+        minSdk = (if (androidCompat) libs.versions.compat.android.minSdk.get() else libs.versions.android.minSdk.get()).toInt()
+        targetSdk = (if (androidCompat) libs.versions.compat.android.targetSdk.get() else libs.versions.android.targetSdk.get()).toInt()
         versionCode = project.property("project.version.code").toString().toInt()
         versionName = project.property("project.version").toString()
         buildConfigField("String", "AIFADIAN_API_TOKEN", "\"$aifadianApiToken\"")
         buildConfigField("String", "AIFADIAN_USER_ID", "\"$aifadianUserId\"")
+
+        if (androidCompat) {
+            // 兼容模式：显式启用 MultiDex
+            // Android 5.0 (API 21) 虽宣称 ART 原生支持 MultiDex，但部分厂商设备 (如华为 P7 API 22)
+            // 存在 DEX 加载 bug：第二个 DEX 中的合成类会抛 NoClassDefFoundError。
+            multiDexEnabled = true
+
+            // 32位架构支持
+            ndk {
+                abiFilters += listOf("armeabi-v7a", "x86")
+            }
+        }
     }
 
     buildFeatures {
@@ -74,9 +88,11 @@ android {
     }
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            isMinifyEnabled = if (androidCompat) false else true
+            isShrinkResources = if (androidCompat) false else true
+            if (!androidCompat) {
+                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            }
 
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
@@ -84,12 +100,59 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = if (androidCompat) JavaVersion.VERSION_1_8 else JavaVersion.VERSION_11
+        targetCompatibility = if (androidCompat) JavaVersion.VERSION_1_8 else JavaVersion.VERSION_11
+        if (androidCompat) {
+            // 兼容模式：启用核心库脱糖 (core library desugaring)
+            // 让低版本 Android 设备可用 Java 8+ 标准库 API
+            isCoreLibraryDesugaringEnabled = true
+        }
+    }
+    kotlinOptions {
+        jvmTarget = if (androidCompat) "1.8" else "11"
+    }
+
+    if (androidCompat) {
+        lint {
+            checkReleaseBuilds = false
+            abortOnError = false
+        }
+    }
+}
+
+// 兼容模式：强制降级依赖版本以支持 minSdk 21
+if (androidCompat) {
+    configurations.all {
+        resolutionStrategy {
+            force("androidx.activity:activity:1.8.2")
+            force("androidx.activity:activity-compose:1.8.2")
+            force("androidx.activity:activity-ktx:1.8.2")
+            force("androidx.core:core-ktx:${libs.versions.compat.androidx.core.get()}")
+            force("androidx.lifecycle:lifecycle-viewmodel-compose:${libs.versions.compat.androidx.lifecycle.get()}")
+            force("androidx.lifecycle:lifecycle-runtime-compose:${libs.versions.compat.androidx.lifecycle.get()}")
+            force("io.ktor:ktor-network:${libs.versions.compat.ktor.get()}")
+            force("io.ktor:ktor-client-core:${libs.versions.compat.ktor.get()}")
+            force("io.ktor:ktor-client-okhttp:${libs.versions.compat.ktor.get()}")
+            force("io.ktor:ktor-client-content-negotiation:${libs.versions.compat.ktor.get()}")
+            force("io.ktor:ktor-serialization-kotlinx-json:${libs.versions.compat.ktor.get()}")
+            force("org.jetbrains.kotlinx:kotlinx-coroutines-android:${libs.versions.compat.kotlinx.coroutines.get()}")
+            force("org.jetbrains.kotlinx:kotlinx-coroutines-core:${libs.versions.compat.kotlinx.coroutines.get()}")
+            force("org.jetbrains.kotlinx:kotlinx-serialization-core:${libs.versions.compat.kotlinx.serialization.get()}")
+            force("org.jetbrains.kotlinx:kotlinx-serialization-protobuf:${libs.versions.compat.kotlinx.serialization.get()}")
+            force("org.jetbrains.kotlinx:kotlinx-serialization-json:${libs.versions.compat.kotlinx.serialization.get()}")
+            force("org.jetbrains.kotlinx:kotlinx-datetime:${libs.versions.compat.kotlinx.datetime.get()}")
+            force("com.materialkolor:material-kolor:${libs.versions.compat.materialKolor.get()}")
+        }
     }
 }
 
 dependencies {
+    if (androidCompat) {
+        // 兼容模式：MultiDex 库 + core library desugaring
+        implementation("androidx.multidex:multidex:${libs.versions.compat.multidex.get()}")
+        coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:${libs.versions.compat.desugarJdkLibs.get()}")
+    }
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.viewmodelCompose)
     implementation(libs.androidx.lifecycle.runtimeCompose)
@@ -108,9 +171,7 @@ dependencies {
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.kotlinx.serialization.protobuf)
     implementation(libs.kotlinx.datetime)
-    implementation("dev.chrisbanes.haze:haze:1.7.2")
-    implementation(libs.filekit.core)
-    implementation(libs.filekit.dialogs.compose)
+    implementation(if (androidCompat) "dev.chrisbanes.haze:haze:1.0.0" else "dev.chrisbanes.haze:haze:1.7.2")
     implementation(libs.materialKolor)
     implementation(libs.concentus)
 
