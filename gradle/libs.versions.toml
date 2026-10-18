@@ -1,40 +1,23 @@
 [versions]
-# === 原版版本（与上游 v2.0.1 一致，不传 -P 参数时使用）===
-agp = "9.3.1"
+# === 降级编译: 兼容旧版手机 (Android 5.0+, 32位) ===
+# AGP 8.9.1 + Gradle 8.11.1 + Kotlin 2.1.20 = 上次验证成功的版本矩阵
+agp = "8.9.1"
 android-compileSdk = "36"
-android-buildTools = "36.1.0"
-android-minSdk = "24"
-android-targetSdk = "36"
-androidx-activity = "1.12.2"
-androidx-core = "1.17.0"
-androidx-lifecycle = "2.9.4"
-compose-bom = "2026.05.00"
-kotlin = "2.4.10"
-kotlinx-coroutines = "1.11.0"
-kotlinx-datetime = "0.8.0"
-ktor = "3.5.0"
-kotlinx-serialization = "1.11.0"
-materialKolor = "5.0.0-alpha07"
-
-# === 兼容模式版本（启用: -Pmicyou.androidCompat=true）===
-# 兼容 Android 5.0+ (API 21+) 的降级版本
-compat-agp = "8.9.1"
-compat-android-compileSdk = "36"
-compat-android-buildTools = "36.0.0"
-compat-android-minSdk = "21"
-compat-android-targetSdk = "29"
-compat-androidx-activity = "1.8.2"
-compat-androidx-core = "1.12.0"
-compat-androidx-lifecycle = "2.8.0"
-compat-compose-bom = "2024.09.00"
-compat-kotlin = "2.1.20"
-compat-kotlinx-coroutines = "1.9.0"
-compat-kotlinx-datetime = "0.7.1"
-compat-ktor = "3.0.3"
-compat-kotlinx-serialization = "1.7.3"
-compat-materialKolor = "1.7.1"
-compat-multidex = "2.0.1"
-compat-desugarJdkLibs = "2.1.4"
+android-buildTools = "36.0.0"
+android-minSdk = "21"
+android-targetSdk = "29"
+# AndroidX 降级到 minSdk 21 兼容版本
+androidx-activity = "1.8.2"
+androidx-core = "1.12.0"
+androidx-lifecycle = "2.8.0"
+# Compose BOM 2024.09.00 (Compose 1.7.x, 兼容 minSdk 21)
+compose-bom = "2024.09.00"
+kotlin = "2.1.20"
+kotlinx-coroutines = "1.9.0"
+kotlinx-datetime = "0.7.1"
+ktor = "3.0.3"
+kotlinx-serialization = "1.7.3"
+materialKolor = "1.7.1"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
@@ -59,8 +42,6 @@ ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "kto
 ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 materialKolor = { module = "com.materialkolor:material-kolor", version.ref = "materialKolor" }
-filekit-core = { module = "io.github.vinceglb:filekit-core", version = "0.13.0" }
-filekit-dialogs-compose = { module = "io.github.vinceglb:filekit-dialogs-compose", version = "0.13.0" }
 concentus = { module = "io.github.jaredmdobson:concentus", version = "1.0.2" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 

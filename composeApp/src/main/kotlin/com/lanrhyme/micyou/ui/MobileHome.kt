@@ -1,18 +1,3 @@
-/*
- * MicYou — Turns your Android device into a high-quality PC microphone.
- * Copyright (C) 2026 LanRhyme <https://github.com/LanRhyme/MicYou>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version, with the MicYou Plugin Exception.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 package com.lanrhyme.micyou.ui
 
 import com.lanrhyme.micyou.R
@@ -109,9 +94,8 @@ import com.lanrhyme.micyou.animation.rememberGlowAnimation
 import com.lanrhyme.micyou.animation.rememberPulseAnimation
 import com.lanrhyme.micyou.animation.rememberRotationAnimation
 import com.lanrhyme.micyou.animation.rememberWaveAnimation
-import com.lanrhyme.micyou.ui.compose.material3.*
-import com.lanrhyme.micyou.ui.compose.haze.HazeState
-import com.lanrhyme.micyou.ui.compose.haze.rememberHazeState
+import dev.chrisbanes.haze.HazeState
+import com.lanrhyme.micyou.ui.background.rememberHazeState
 import kotlinx.coroutines.delay
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource

@@ -1,18 +1,3 @@
-/*
- * MicYou — Turns your Android device into a high-quality PC microphone.
- * Copyright (C) 2026 LanRhyme <https://github.com/LanRhyme/MicYou>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version, with the MicYou Plugin Exception.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 package com.lanrhyme.micyou.service
 import com.lanrhyme.micyou.R
 
@@ -88,7 +73,10 @@ class AudioService : Service() {
         }
         val notification = createNotification(streaming)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        // ⚠️ startForeground(id, notification, foregroundServiceType) 三参数重载是 API 34+ (Android 14) 才引入的
+        //   API 29-33 只能用两参数版本，foregroundServiceType 在 manifest 的 <service> 标签上声明
+        //   API < 29 直接用两参数版本
+        if (Build.VERSION.SDK_INT >= 34 /*Build.VERSION_CODES.UPSIDE_DOWN_CAKE*/) {
             val type = if (streaming) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             } else {
@@ -105,7 +93,8 @@ class AudioService : Service() {
         releaseSessionLocks()
         val notification = createNotification(streaming = false)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        // 同上：三参数 startForeground 只在 API 34+ 可用
+        if (Build.VERSION.SDK_INT >= 34 /*Build.VERSION_CODES.UPSIDE_DOWN_CAKE*/) {
             startForeground(
                 NOTIFICATION_ID,
                 notification,
@@ -153,29 +142,30 @@ class AudioService : Service() {
         scheduleRestart()
     }
 
-    // [API 21+ 兼容] setExactAndAllowWhileIdle() 是 API 23+ 才有的，
-    // 低版本用 setExact() 替代（虽不支持空闲时精确唤醒，但兼容模式 targetSdk 29 不需要 Doze 模式适配）。
     private fun scheduleRestart() {
-        val alarm = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        // getSystemService(Class) 是 API 23+ 方法，API 21-22 用字符串常量
+        val alarm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            getSystemService(AlarmManager::class.java)
+        } else {
+            getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        }
         val triggerAt = System.currentTimeMillis() + RESTART_DELAY_MS
+        // setExactAndAllowWhileIdle 是 API 23+ 方法，API 21-22 用 setExact (无 Doze 模式)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, restartPendingIntent())
         } else {
+            @Suppress("DEPRECATION")
             alarm.setExact(AlarmManager.RTC_WAKEUP, triggerAt, restartPendingIntent())
         }
     }
 
     private fun cancelRestartAlarm() {
-        val alarm = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val alarm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            getSystemService(AlarmManager::class.java)
+        } else {
+            getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        }
         alarm.cancel(restartPendingIntent())
-    }
-
-    // [API 21+ 兼容] PendingIntent.FLAG_IMMUTABLE 是 API 23+ 才有的常量，
-    // 低版本只用 FLAG_UPDATE_CURRENT（默认行为即不可变）。
-    private fun pendingIntentFlags(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-    } else {
-        PendingIntent.FLAG_UPDATE_CURRENT
     }
 
     private fun restartPendingIntent(): PendingIntent =
@@ -183,7 +173,11 @@ class AudioService : Service() {
             this,
             0,
             Intent(this, RestartReceiver::class.java).apply { action = ACTION_START },
-            pendingIntentFlags()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
         )
 
     private fun writeWifiLockFlag(useWifiLock: Boolean) {
@@ -219,21 +213,31 @@ class AudioService : Service() {
         }
         val contentIntent = if (streaming) {
             val disconnectIntent = Intent(this, AudioService::class.java).apply { action = ACTION_DISCONNECT }
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
             PendingIntent.getService(
                 this,
                 0,
                 disconnectIntent,
-                pendingIntentFlags()
+                flags
             )
         } else {
             val openApp = Intent(this, MainActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
             PendingIntent.getActivity(
                 this,
                 1,
                 openApp,
-                pendingIntentFlags()
+                flags
             )
         }
 
@@ -289,7 +293,7 @@ class AudioService : Service() {
                 channelName,
                 NotificationManager.IMPORTANCE_LOW
             )
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(serviceChannel)
         }
     }

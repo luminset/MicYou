@@ -1,18 +1,3 @@
-/*
- * MicYou — Turns your Android device into a high-quality PC microphone.
- * Copyright (C) 2026 LanRhyme <https://github.com/LanRhyme/MicYou>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version, with the MicYou Plugin Exception.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 package com.lanrhyme.micyou.audio
 import com.lanrhyme.micyou.R
 
@@ -23,14 +8,19 @@ import com.lanrhyme.micyou.audio.AndroidAudioSource
 import com.lanrhyme.micyou.audio.AudioSourceOption
 import com.lanrhyme.micyou.audio.getAudioSourceOptions
 
-enum class AndroidAudioSource(@StringRes val labelRes: Int, val sourceId: Int) {
+enum class AndroidAudioSource(@StringRes val labelRes: Int, val sourceId: Int, val minApiLevel: Int = 0) {
     Mic(R.string.audioSourceMic, MediaRecorder.AudioSource.MIC),
     VoiceCommunication(R.string.audioSourceVoiceCommunication, MediaRecorder.AudioSource.VOICE_COMMUNICATION),
     VoiceRecognition(R.string.audioSourceVoiceRecognition, MediaRecorder.AudioSource.VOICE_RECOGNITION),
-    // Use raw integer 9 for VOICE_PERFORMANCE to avoid NoClassDefFoundError on API < 29
-    VoicePerformance(R.string.audioSourceVoicePerformance, 9),
+    // VOICE_PERFORMANCE 需要 API 29+，使用硬编码值 10 避免低版本 NoClassDefFoundError
+    VoicePerformance(R.string.audioSourceVoicePerformance, 10, minApiLevel = 29),
     Camcorder(R.string.audioSourceCamcorder, MediaRecorder.AudioSource.CAMCORDER),
-    Unprocessed(R.string.audioSourceUnprocessed, MediaRecorder.AudioSource.UNPROCESSED)
+    // UNPROCESSED 需要 API 24+，使用硬编码值 9 避免低版本崩溃
+    Unprocessed(R.string.audioSourceUnprocessed, 9, minApiLevel = 24);
+
+    fun isSupported(): Boolean {
+        return Build.VERSION.SDK_INT >= minApiLevel
+    }
 }
 
 data class AudioSourceOption(
@@ -41,6 +31,6 @@ data class AudioSourceOption(
 
 fun getAudioSourceOptions(): List<AudioSourceOption> {
     return AndroidAudioSource.entries
-        .filter { it.sourceId != 9 || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q }
+        .filter { it.isSupported() }
         .map { AudioSourceOption(it.name, it.labelRes) }
 }

@@ -1,18 +1,3 @@
-/*
- * MicYou — Turns your Android device into a high-quality PC microphone.
- * Copyright (C) 2026 LanRhyme <https://github.com/LanRhyme/MicYou>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version, with the MicYou Plugin Exception.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 package com.lanrhyme.micyou.ui.background
 
 import androidx.compose.foundation.Image
@@ -32,11 +17,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.lanrhyme.micyou.ui.compose.haze.HazeState
-import com.lanrhyme.micyou.ui.compose.haze.HazeStyle
-import com.lanrhyme.micyou.ui.compose.haze.HazeTint
-import com.lanrhyme.micyou.ui.compose.haze.hazeEffect
-import com.lanrhyme.micyou.ui.compose.haze.hazeSource
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeChild
+import dev.chrisbanes.haze.haze
 import com.lanrhyme.micyou.settings.Settings
 import com.lanrhyme.micyou.ui.background.BackgroundSettings
 import com.lanrhyme.micyou.ui.background.CustomBackground
@@ -73,7 +58,7 @@ fun CustomBackground(
         Box(
             modifier = modifier.then(
                 if (hazeState != null && settings.enableHazeEffect) {
-                    Modifier.hazeSource(state = hazeState)
+                    Modifier.haze(state = hazeState)
                 } else {
                     Modifier
                 }
@@ -107,7 +92,7 @@ fun HazeCard(
 ) {
     if (enabled && hazeState != null) {
         Box(
-            modifier = modifier.hazeEffect(
+            modifier = modifier.hazeChild(
                 state = hazeState,
                 style = HazeStyle(
                     backgroundColor = hazeColor,
@@ -138,7 +123,7 @@ fun HazeSurface(
         Box(
             modifier = modifier
                 .clip(shape)
-                .hazeEffect(
+                .hazeChild(
                     state = hazeState,
                     style = HazeStyle(
                         backgroundColor = hazeColor,

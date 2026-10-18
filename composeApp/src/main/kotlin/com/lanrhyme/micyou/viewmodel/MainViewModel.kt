@@ -1,18 +1,3 @@
-/*
- * MicYou — Turns your Android device into a high-quality PC microphone.
- * Copyright (C) 2026 LanRhyme <https://github.com/LanRhyme/MicYou>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version, with the MicYou Plugin Exception.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 package com.lanrhyme.micyou.viewmodel
 
 import androidx.lifecycle.ViewModel
@@ -26,6 +11,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.lanrhyme.micyou.audio.AudioEngine
 import com.lanrhyme.micyou.audio.AudioFormat
+import com.lanrhyme.micyou.audio.AudioLevelData
+import com.lanrhyme.micyou.audio.AudioMetrics
 import com.lanrhyme.micyou.audio.ChannelCount
 import com.lanrhyme.micyou.audio.SampleRate
 import com.lanrhyme.micyou.network.ConnectionErrorDetails
@@ -41,6 +28,8 @@ import com.lanrhyme.micyou.update.UpdateViewModel
 import com.lanrhyme.micyou.util.AppLanguage
 import com.lanrhyme.micyou.util.Constants
 import com.lanrhyme.micyou.util.getString
+import com.lanrhyme.micyou.audio.AudioEffectType
+import com.lanrhyme.micyou.audio.EqualizerConfig
 
 import com.lanrhyme.micyou.R
 import com.lanrhyme.micyou.viewmodel.ConnectionMode
@@ -57,6 +46,12 @@ enum class TransportProtocol(val label: String) {
 
 enum class StreamState {
     Idle, Connecting, Streaming, Error
+}
+
+enum class NoiseReductionType(val label: String) {
+    RNNoise("RNNoise"),
+    Speexdsp("Speexdsp"),
+    None("None")
 }
 
 enum class VisualizerStyle(val label: String) {
@@ -78,23 +73,49 @@ data class AppUiState(
     val transportProtocol: TransportProtocol = TransportProtocol.Both,
     val streamState: StreamState = StreamState.Idle,
     val ipAddress: String = "192.168.1.5",
+    val bindAddress: String = "0.0.0.0",
+    val isAutoBindAddress: Boolean = true,
     val port: String = Constants.DEFAULT_TCP_PORT.toString(),
     val errorMessage: String? = null,
+    val monitoringEnabled: Boolean = false,
     val sampleRate: SampleRate = SampleRate.Rate48000,
     val channelCount: ChannelCount = ChannelCount.Stereo,
     val audioFormat: AudioFormat = AudioFormat.PCM_FLOAT,
     val isMuted: Boolean = false,
     val isAutoConfig: Boolean = true,
-
+    
     // Error Dialog State
     val showErrorDialog: Boolean = false,
     val errorDetails: ConnectionErrorDetails? = null,
-
+    
     // UDP Warning Dialog State
     val showUdpWarningDialog: Boolean = false,
-
+    
+    // Audio Processing Settings
+    val enableNS: Boolean = false,
+    val nsType: NoiseReductionType = NoiseReductionType.RNNoise,
+    val enableAGC: Boolean = false,
+    val agcTargetLevel: Int = 32000,
+    val agcAttackRate: Float = 0.01f,
+    val agcDecayRate: Float = 0.005f,
+    val enableVAD: Boolean = false,
+    val vadThreshold: Int = 10,
+    val enableDereverb: Boolean = false,
+    val dereverbLevel: Float = 0.5f,
+    val amplification: Float = 15.0f,
+    val nsIntensity: Float = 1.0f,
+    val equalizerConfig: EqualizerConfig = EqualizerConfig(),
+    val processingChain: List<AudioEffectType> = listOf(
+        AudioEffectType.NoiseReduction,
+        AudioEffectType.Dereverb,
+        AudioEffectType.Equalizer,
+        AudioEffectType.Amplifier,
+        AudioEffectType.AGC,
+        AudioEffectType.VAD
+    ),
     val androidAudioSourceName: String = "Mic",
-
+    val audioConfigRevision: Int = 0,
+    
     // Settings State
     val themeMode: ThemeMode = ThemeMode.System,
     val seedColor: Long = 0xFF1565C0,
@@ -104,6 +125,7 @@ data class AppUiState(
     val useExpressiveShapes: Boolean = true,
     val language: AppLanguage = AppLanguage.System,
     val autoStart: Boolean = false,
+    val enableStreamingNotification: Boolean = true,
     val keepScreenOn: Boolean = false,
     val autoCheckUpdate: Boolean = true,
     val useMirrorDownload: Boolean = false,
@@ -112,8 +134,8 @@ data class AppUiState(
     val visualizerStyle: VisualizerStyle = VisualizerStyle.VolumeRing,
     val backgroundSettings: BackgroundSettings = BackgroundSettings(),
     val showFirstLaunchDialog: Boolean = false,
-
-
+    
+    
     // Update State
     val updateInfo: UpdateInfo? = null,
     val updateDownloadState: UpdateDownloadState = UpdateDownloadState.Idle,
@@ -121,6 +143,12 @@ data class AppUiState(
     val updateDownloadedBytes: Long = 0,
     val updateTotalBytes: Long = 0,
     val updateErrorMessage: String? = null,
+
+    // Performance State
+    val performanceMode: String = "Default",
+    val audioMetrics: AudioMetrics? = null,
+    val metricsHistory: List<AudioMetrics> = emptyList(),
+    val showMonitoringPanel: Boolean = false,
 
     // Discovery State
     val discoveredDevices: List<DiscoveredDevice> = emptyList(),
@@ -142,23 +170,28 @@ class MainViewModel : ViewModel() {
     private val settingsViewModel = SettingsViewModel()
 
     private val updateViewModel = UpdateViewModel()
-
+    
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
-
+    
     // Expose audio levels from AudioStreamViewModel
     val audioLevels = audioStreamViewModel.audioLevels
-
+    val rawSpectrum = audioStreamViewModel.rawSpectrum
+    val processedSpectrum = audioStreamViewModel.processedSpectrum
+    val audioLevelData = audioStreamViewModel.audioLevelData
+    val audioMetricsFlow = audioStreamViewModel.audioMetrics
+    val levelHistory = audioStreamViewModel.levelHistory
+    
     private val settings = SettingsFactory.getSettings()
-
+    
     init {
         // Initialize from settings
-        val initialLanguage = try {
-            AppLanguage.valueOf(settings.getString("language", AppLanguage.System.name))
-        } catch(e: Exception) {
-            AppLanguage.System
+        val initialLanguage = try { 
+            AppLanguage.valueOf(settings.getString("language", AppLanguage.System.name)) 
+        } catch(e: Exception) { 
+            AppLanguage.System 
         }
-
+        
         // Observe and merge states from all ViewModels
         setupStateObservers()
 
@@ -173,7 +206,7 @@ class MainViewModel : ViewModel() {
                 _uiState.update { it.copy(isDiscovering = discovering) }
             }
         }
-
+        
         // Auto-check for updates
         if (settings.getBoolean("auto_check_update", true)) {
             updateViewModel.checkUpdateAuto()
@@ -195,19 +228,39 @@ class MainViewModel : ViewModel() {
 
     private fun setupStateObservers() {
         viewModelScope.launch {
-            combine(
+            val audioDataFlow = combine(
                 audioStreamViewModel.uiState,
+                audioStreamViewModel.audioMetrics,
+                audioStreamViewModel.metricsHistoryFlow
+            ) { state, metrics, history ->
+                // Return a data structure to hold the 3 audio-related states
+                object {
+                    val state = state
+                    val metrics = metrics
+                    val history = history
+                }
+            }
+
+            combine(
+                audioDataFlow,
                 settingsViewModel.uiState,
                 updateViewModel.uiState
-            ) { audioState, settingsState, updateState ->
+            ) { audioData, settingsState, updateState ->
+                val audioState = audioData.state
+                val currentMetrics = audioData.metrics
+                val history = audioData.history
+                
                 _uiState.update { current ->
                     current.copy(
                         mode = audioState.mode,
                         transportProtocol = audioState.transportProtocol,
                         streamState = audioState.streamState,
                         ipAddress = audioState.ipAddress,
+                        bindAddress = audioState.bindAddress,
+                        isAutoBindAddress = audioState.isAutoBindAddress,
                         port = audioState.port,
                         errorMessage = audioState.errorMessage,
+                        monitoringEnabled = audioState.monitoringEnabled,
                         sampleRate = audioState.sampleRate,
                         channelCount = audioState.channelCount,
                         audioFormat = audioState.audioFormat,
@@ -216,7 +269,22 @@ class MainViewModel : ViewModel() {
                         showErrorDialog = audioState.showErrorDialog,
                         errorDetails = audioState.errorDetails,
                         showUdpWarningDialog = audioState.showUdpWarningDialog,
+                        enableNS = audioState.enableNS,
+                        nsType = audioState.nsType,
+                        enableAGC = audioState.enableAGC,
+                        agcTargetLevel = audioState.agcTargetLevel,
+                        agcAttackRate = audioState.agcAttackRate,
+                        agcDecayRate = audioState.agcDecayRate,
+                        enableVAD = audioState.enableVAD,
+                        vadThreshold = audioState.vadThreshold,
+                        enableDereverb = audioState.enableDereverb,
+                        dereverbLevel = audioState.dereverbLevel,
+                        amplification = audioState.amplification,
+                        nsIntensity = audioState.nsIntensity,
+                        processingChain = audioState.processingChain,
+                        equalizerConfig = audioState.equalizerConfig,
                         androidAudioSourceName = audioState.androidAudioSourceName,
+                        audioConfigRevision = audioState.audioConfigRevision,
                         themeMode = settingsState.themeMode,
                         seedColor = settingsState.seedColor,
                         useDynamicColor = settingsState.useDynamicColor,
@@ -225,6 +293,7 @@ class MainViewModel : ViewModel() {
                         useExpressiveShapes = settingsState.useExpressiveShapes,
                         language = settingsState.language,
                         autoStart = settingsState.autoStart,
+                        enableStreamingNotification = settingsState.enableStreamingNotification,
                         keepScreenOn = settingsState.keepScreenOn,
                         autoCheckUpdate = settingsState.autoCheckUpdate,
                         useMirrorDownload = settingsState.useMirrorDownload,
@@ -240,6 +309,10 @@ class MainViewModel : ViewModel() {
                         updateDownloadedBytes = updateState.updateDownloadedBytes,
                         updateTotalBytes = updateState.updateTotalBytes,
                         updateErrorMessage = updateState.updateErrorMessage,
+                        performanceMode = audioState.performanceMode,
+                        audioMetrics = currentMetrics,
+                        metricsHistory = history,
+                        showMonitoringPanel = audioState.showMonitoringPanel,
                         snackbarMessage = settingsState.snackbarMessage
                     )
                 }
@@ -264,17 +337,34 @@ class MainViewModel : ViewModel() {
         audioStreamViewModel.setIp(device.hostAddress)
         audioStreamViewModel.setPort(device.port.toString())
     }
-    fun setIp(ip: String, restartStream: Boolean = false) = audioStreamViewModel.setIp(ip, restartStream)
+    fun setIp(ip: String, isAutoSelect: Boolean = false, restartStream: Boolean = false) = audioStreamViewModel.setIp(ip, isAutoSelect, restartStream)
     fun setPort(port: String) = audioStreamViewModel.setPort(port)
+    fun setMonitoringEnabled(enabled: Boolean) = audioStreamViewModel.setMonitoringEnabled(enabled)
     fun setSampleRate(rate: SampleRate) = audioStreamViewModel.setSampleRate(rate)
     fun setChannelCount(count: ChannelCount) = audioStreamViewModel.setChannelCount(count)
     fun setAudioFormat(format: AudioFormat) = audioStreamViewModel.setAudioFormat(format)
+    fun setAndroidAudioProcessing(enabled: Boolean) = audioStreamViewModel.setAndroidAudioProcessing(enabled)
+    fun setEnableNS(enabled: Boolean) = audioStreamViewModel.setEnableNS(enabled)
+    fun setNsType(type: NoiseReductionType) = audioStreamViewModel.setNsType(type)
+    fun setNsIntensity(intensity: Float) = audioStreamViewModel.setNsIntensity(intensity)
+    fun setEnableAGC(enabled: Boolean) = audioStreamViewModel.setEnableAGC(enabled)
+    fun setAgcTargetLevel(level: Int) = audioStreamViewModel.setAgcTargetLevel(level)
+    fun setAgcAttackRate(rate: Float) = audioStreamViewModel.setAgcAttackRate(rate)
+    fun setAgcDecayRate(rate: Float) = audioStreamViewModel.setAgcDecayRate(rate)
+    fun setEnableVAD(enabled: Boolean) = audioStreamViewModel.setEnableVAD(enabled)
+    fun setVadThreshold(threshold: Int) = audioStreamViewModel.setVadThreshold(threshold)
+    fun setEnableDereverb(enabled: Boolean) = audioStreamViewModel.setEnableDereverb(enabled)
+    fun setDereverbLevel(level: Float) = audioStreamViewModel.setDereverbLevel(level)
+    fun setEqualizerConfig(config: EqualizerConfig) = audioStreamViewModel.setEqualizerConfig(config)
+    fun setProcessingChain(chain: List<AudioEffectType>) = audioStreamViewModel.setProcessingChain(chain)
+    fun setAmplification(amp: Float) = audioStreamViewModel.setAmplification(amp)
     fun setAndroidAudioSource(sourceName: String) = audioStreamViewModel.setAndroidAudioSource(sourceName)
     fun setAutoConfig(enabled: Boolean) = audioStreamViewModel.setAutoConfig(enabled)
+    fun setMonitoringPanelVisible(visible: Boolean) = audioStreamViewModel.setMonitoringPanelVisible(visible)
     fun dismissErrorDialog() = audioStreamViewModel.dismissErrorDialog()
     fun dismissUdpWarningDialog() = audioStreamViewModel.dismissUdpWarningDialog()
     fun retryAfterError() = audioStreamViewModel.retryAfterError()
-
+    
     // Settings methods
     fun setThemeMode(mode: ThemeMode) = settingsViewModel.setThemeMode(mode)
     fun setSeedColor(color: Long) = settingsViewModel.setSeedColor(color)
@@ -284,6 +374,10 @@ class MainViewModel : ViewModel() {
     fun setUseExpressiveShapes(enabled: Boolean) = settingsViewModel.setUseExpressiveShapes(enabled)
     fun setLanguage(language: AppLanguage) = settingsViewModel.setLanguage(language)
     fun setAutoStart(enabled: Boolean) = settingsViewModel.setAutoStart(enabled)
+    fun setEnableStreamingNotification(enabled: Boolean) {
+        settingsViewModel.setEnableStreamingNotification(enabled)
+        audioStreamViewModel.audioEngine.setStreamingNotificationEnabled(enabled)
+    }
     fun setKeepScreenOn(enabled: Boolean) = settingsViewModel.setKeepScreenOn(enabled)
     fun setVisualizerStyle(style: VisualizerStyle) = settingsViewModel.setVisualizerStyle(style)
     fun setAutoCheckUpdate(enabled: Boolean) = settingsViewModel.setAutoCheckUpdate(enabled)
@@ -302,9 +396,9 @@ class MainViewModel : ViewModel() {
     fun clearSnackbar() = settingsViewModel.clearSnackbar()
     fun dismissFirstLaunchDialog() = settingsViewModel.dismissFirstLaunchDialog()
     fun exportLog(onResult: (String?) -> Unit) = settingsViewModel.exportLog(onResult)
+    
 
-
-
+    
     // Update methods
     fun checkUpdateManual() {
         viewModelScope.launch {            _uiState.update { it.copy(snackbarMessage = getString(R.string.checkingUpdate)) }
@@ -314,6 +408,13 @@ class MainViewModel : ViewModel() {
     fun downloadAndInstallUpdate(useMirror: Boolean = _uiState.value.useMirrorDownload) = updateViewModel.downloadAndInstallUpdate(useMirror)
     fun dismissUpdateDialog() = updateViewModel.dismissUpdateDialog()
     fun openGitHubRelease() = updateViewModel.openGitHubRelease()
+
+    suspend fun getPeakLevel(seconds: Int = 3): Float = audioStreamViewModel.getPeakLevel(seconds)
+    suspend fun getAverageRms(seconds: Int = 3): Float = audioStreamViewModel.getAverageRms(seconds)
+
+    // Performance methods
+    fun setPerformanceMode(mode: String) = audioStreamViewModel.setPerformanceMode(mode)
+    fun setBufferSizeMultiplier(multiplier: Float) = audioStreamViewModel.setBufferSizeMultiplier(multiplier)
 
     fun clearInstallMessage() {
         _uiState.update { it.copy(installMessage = null) }

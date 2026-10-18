@@ -1,18 +1,3 @@
-/*
- * MicYou — Turns your Android device into a high-quality PC microphone.
- * Copyright (C) 2026 LanRhyme <https://github.com/LanRhyme/MicYou>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version, with the MicYou Plugin Exception.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2025-2026 InstallerX Revived contributors
 // Adapted for MicYou
@@ -25,7 +10,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.graphics.Color
 import com.materialkolor.dynamicColorScheme
-import com.materialkolor.dynamiccolor.ColorSpec
 import com.materialkolor.PaletteStyle as MaterialKolorPaletteStyle
 
 /**
@@ -44,16 +28,10 @@ enum class PaletteStyle(
     Monochrome("Monochrome"),
     Fidelity("Fidelity"),
     Content("Content");
-
-    val supportsSpec2025: Boolean
-        get() = this == TonalSpot ||
-                this == Neutral ||
-                this == Vibrant ||
-                this == Expressive
 }
 
 /**
- * 动态配色方案生成 - 强制使用 Expressive (2025)
+ * 动态配色方案生成 (materialKolor 1.7.1 兼容)
  */
 @Stable
 fun dynamicColorScheme(
@@ -75,16 +53,13 @@ fun dynamicColorScheme(
         PaletteStyle.Content -> MaterialKolorPaletteStyle.Content
     }
 
-    // 强制使用 SPEC_2025 (Expressive 2025)
-    val specVersion = if (style.supportsSpec2025) ColorSpec.SpecVersion.SPEC_2025 else ColorSpec.SpecVersion.SPEC_2021
-
-    // 直接使用 materialkolor 生成配色方案 - 不做任何手动调整
+    // materialKolor 1.7.1: 无 specVersion 参数，使用 isAmoled=false
     return dynamicColorScheme(
         seedColor = keyColor,
         isDark = isDark,
+        isAmoled = false,
         style = mkStyle,
-        contrastLevel = contrastLevel,
-        specVersion = specVersion
+        contrastLevel = contrastLevel
     )
 }
 
@@ -136,19 +111,7 @@ fun ColorScheme.animateAsState(): ColorScheme {
         surfaceContainerHigh = animateColor(surfaceContainerHigh),
         surfaceContainerHighest = animateColor(surfaceContainerHighest),
         surfaceContainerLow = animateColor(surfaceContainerLow),
-        surfaceContainerLowest = animateColor(surfaceContainerLowest),
-        primaryFixed = animateColor(primaryFixed),
-        primaryFixedDim = animateColor(primaryFixedDim),
-        onPrimaryFixed = animateColor(onPrimaryFixed),
-        onPrimaryFixedVariant = animateColor(onPrimaryFixedVariant),
-        secondaryFixed = animateColor(secondaryFixed),
-        secondaryFixedDim = animateColor(secondaryFixedDim),
-        onSecondaryFixed = animateColor(onSecondaryFixed),
-        onSecondaryFixedVariant = animateColor(onSecondaryFixedVariant),
-        tertiaryFixed = animateColor(tertiaryFixed),
-        tertiaryFixedDim = animateColor(tertiaryFixedDim),
-        onTertiaryFixed = animateColor(onTertiaryFixed),
-        onTertiaryFixedVariant = animateColor(onTertiaryFixedVariant)
+        surfaceContainerLowest = animateColor(surfaceContainerLowest)
     )
 }
 

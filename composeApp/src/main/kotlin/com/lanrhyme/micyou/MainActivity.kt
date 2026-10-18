@@ -1,18 +1,3 @@
-/*
- * MicYou — Turns your Android device into a high-quality PC microphone.
- * Copyright (C) 2026 LanRhyme <https://github.com/LanRhyme/MicYou>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version, with the MicYou Plugin Exception.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 package com.lanrhyme.micyou
 
 import android.content.Context
@@ -49,8 +34,7 @@ import com.lanrhyme.micyou.util.PermissionState
 import com.lanrhyme.micyou.util.setAppLocale
 import com.lanrhyme.micyou.viewmodel.MainViewModel
 import com.lanrhyme.micyou.viewmodel.StreamState
-import io.github.vinceglb.filekit.FileKit
-import io.github.vinceglb.filekit.dialogs.init
+import com.lanrhyme.micyou.ui.background.BackgroundImagePicker
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -74,6 +58,13 @@ class MainActivity : ComponentActivity() {
             permissionDialogState.value = false
             permissionDialogDismissed.value = true
         }
+    }
+
+    // 图片选择器 (替代 FileKit.openFilePicker)
+    private val imagePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        BackgroundImagePicker.onImagePicked(uri?.toString())
     }
 
     fun requestPermissions(permissions: List<String>) {
@@ -145,7 +136,11 @@ class MainActivity : ComponentActivity() {
         Logger.init(this)
         Logger.i("MainActivity", "App started")
 
-        FileKit.init(this)
+        // 注册图片选择器启动回调 (替代 FileKit.init + FileKit.openFilePicker)
+        BackgroundImagePicker.launchImagePicker = {
+            imagePickerLauncher.launch("image/*")
+        }
+
         val shouldQuickStart = intent?.action == ACTION_QUICK_START
 
         // Initialize permission state
@@ -167,15 +162,14 @@ class MainActivity : ComponentActivity() {
                 val idleIntent = Intent(this, AudioService::class.java).apply {
                     action = AudioService.ACTION_START_IDLE
                 }
-                // [API 21+ 兼容] startForegroundService() 是 API 26+ 才有的，
-                // 低版本用 startService() 启动前台服务（service 内部会调用 startForeground()）。
+                // startForegroundService 是 API 26+ 方法，API 21-25 用 startService
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(idleIntent)
                 } else {
                     startService(idleIntent)
                 }
-            } catch (_: Exception) {
-                // 空闲保活失败不阻塞启动
+            } catch (_: Throwable) {
+                // 空闲保活失败不阻塞启动 (catch Throwable 以捕获 NoSuchMethodError 等 Error)
             }
         }
 

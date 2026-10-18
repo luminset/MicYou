@@ -1,18 +1,3 @@
-/*
- * MicYou — Turns your Android device into a high-quality PC microphone.
- * Copyright (C) 2026 LanRhyme <https://github.com/LanRhyme/MicYou>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version, with the MicYou Plugin Exception.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 package com.lanrhyme.micyou.audio
 
 import android.os.Build
@@ -50,32 +35,6 @@ internal data class ResolvedAudioFormat(
     val bytesPerSample: Int = captureFormat.bitsPerSample / Byte.SIZE_BITS
 }
 
-/**
- * 返回当前设备可用的音频格式列表（用于设置 UI）。
- * - PCM_24BIT 始终不显示（运行时降级为 PCM_16BIT）
- * - PCM_FLOAT 在 API < 23 时不显示（AudioRecord.read(float[]) 需要 API 23+）
- */
-fun availableAudioFormats(): List<AudioFormat> {
-    val supportsFloat = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-    return AudioFormat.entries.filter { format ->
-        when (format) {
-            AudioFormat.PCM_24BIT -> false
-            AudioFormat.PCM_FLOAT -> supportsFloat
-            else -> true
-        }
-    }
-}
-
-/**
- * 返回当前设备的安全默认格式。
- * - API < 23: PCM_16BIT
- * - API >= 23: PCM_FLOAT
- */
-fun defaultAudioFormat(): AudioFormat {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) AudioFormat.PCM_FLOAT
-    else AudioFormat.PCM_16BIT
-}
-
 internal fun resolveAudioFormat(requestedFormat: AudioFormat): ResolvedAudioFormat {
     var resolvedFormat = when (requestedFormat) {
         AudioFormat.PCM_24BIT -> AudioFormat.PCM_16BIT
@@ -95,3 +54,24 @@ internal fun resolveAudioFormat(requestedFormat: AudioFormat): ResolvedAudioForm
         wireFormat = resolvedFormat
     )
 }
+
+/**
+ * 音频处理效果类型
+ */
+enum class AudioEffectType(val label: String) {
+    NoiseReduction("降噪"),
+    Dereverb("去混响"),
+    Amplifier("增益放大"),
+    AGC("自动增益 (AGC)"),
+    VAD("语音检测 (VAD)"),
+    Equalizer("均衡器 (EQ)")
+}
+
+/**
+ * 均衡器配置
+ */
+data class EqualizerConfig(
+    val enabled: Boolean = false,
+    val gains: List<Float> = List(10) { 0f }, // 10 bands, 0dB each
+    val preAmp: Float = 0f // Pre-amp gain in dB
+)

@@ -1,18 +1,3 @@
-/*
- * MicYou — Turns your Android device into a high-quality PC microphone.
- * Copyright (C) 2026 LanRhyme <https://github.com/LanRhyme/MicYou>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version, with the MicYou Plugin Exception.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 package com.lanrhyme.micyou.ui
 import com.lanrhyme.micyou.R
 
@@ -66,7 +51,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import com.lanrhyme.micyou.ui.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -89,16 +73,15 @@ import com.lanrhyme.micyou.theme.ExpressiveSettingsBoxItem
 import com.lanrhyme.micyou.theme.ExpressiveSettingsDropdownItem
 import com.lanrhyme.micyou.theme.ExpressiveSettingsSwitchItem
 import com.lanrhyme.micyou.theme.PaletteStyle
-import com.lanrhyme.micyou.ui.compose.haze.HazeState
+import dev.chrisbanes.haze.HazeState
 import com.lanrhyme.micyou.ui.background.rememberHazeState
-import com.lanrhyme.micyou.ui.compose.haze.HazeStyle
-import com.lanrhyme.micyou.ui.compose.haze.HazeTint
-import com.lanrhyme.micyou.ui.compose.haze.hazeChild
-import com.lanrhyme.micyou.ui.compose.haze.haze
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeChild
+import dev.chrisbanes.haze.haze
 import androidx.compose.ui.res.stringResource
 import com.lanrhyme.micyou.audio.AudioFormat
 import com.lanrhyme.micyou.audio.ChannelCount
-import com.lanrhyme.micyou.audio.availableAudioFormats
 import com.lanrhyme.micyou.audio.getAudioSourceOptions
 import com.lanrhyme.micyou.audio.SampleRate
 import com.lanrhyme.micyou.theme.isDynamicColorSupported
@@ -728,12 +711,11 @@ private fun LazyListScope.audioSettingsItems(
 
         // 音频格式
         items.add { isFirst, isLast ->
-            val formats = availableAudioFormats()
             ExpressiveAudioDropdownItem(
                 headline = stringResource(R.string.audioFormatLabel),
                 selected = state.audioFormat.label,
-                options = formats.map { it.label },
-                onSelect = { index -> viewModel.setAudioFormat(formats[index]) },
+                options = AudioFormat.entries.map { it.label },
+                onSelect = { index -> viewModel.setAudioFormat(AudioFormat.entries[index]) },
                 enabled = manualSettingsEnabled,
                 isFirst = isFirst,
                 isLast = isLast,

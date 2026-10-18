@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.os.Build
 import android.widget.Toast
+import androidx.multidex.MultiDex
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -13,24 +14,25 @@ import java.util.Locale
 
 /**
  * 全局 Application 类
- * - 反射安装 MultiDex（无依赖时静默跳过，不影响原版编译）
- * - 设置全局未捕获异常处理器，崩溃日志记录到外部存储 crash 目录
+ * - 安装 MultiDex (修复 API 21-22 厂商设备 DEX 加载 bug)
+ * - 设置全局未捕获异常处理器
+ * - 崩溃日志记录到外部存储 crash 目录
  * - 兼容 Android 5.0+ (API 21+)
  */
 class MicYouApplication : Application() {
 
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
-        // 通过反射安装 MultiDex：兼容模式下 multidex 库存在时生效
-        // 原版构建无此依赖时静默跳过，不影响运行
+        // [API 21+ 兼容] 显式安装 MultiDex
+        // Android 5.0 (API 21) 虽宣称 ART 原生支持 MultiDex，但部分厂商 ROM
+        // (如华为 EMUI 3.1 / P7-L09 API 22) 存在 DEX 加载遗漏 bug，
+        // 会导致第二个 DEX 中的 $$ExternalSyntheticLambda* 合成类触发 NoClassDefFoundError。
+        // 在 Application.onCreate() 之前（最早 hook 点）安装 MultiDex 可确保
+        // 所有类加载路径被正确注册。
         try {
-            val multiDexClass = Class.forName("androidx.multidex.MultiDex")
-            val installMethod = multiDexClass.getMethod("install", Application::class.java)
-            installMethod.invoke(null, this)
+            MultiDex.install(this)
         } catch (_: Throwable) {
-            // 无 MultiDex 依赖或安装失败时静默忽略
-            // 原版构建：直接跳过，不影响功能
-            // 兼容模式：退化为系统默认 MultiDex 行为
+            // 安装失败时静默忽略：最坏情况退化为系统默认 MultiDex 行为
         }
     }
 

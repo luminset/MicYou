@@ -1,18 +1,3 @@
-/*
- * MicYou — Turns your Android device into a high-quality PC microphone.
- * Copyright (C) 2026 LanRhyme <https://github.com/LanRhyme/MicYou>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version, with the MicYou Plugin Exception.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- */
-
 package com.lanrhyme.micyou.audio
 import com.lanrhyme.micyou.R
 
@@ -38,6 +23,7 @@ import io.ktor.utils.io.reader
 import io.ktor.utils.io.writeFully
 import io.ktor.utils.io.writeInt
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +60,7 @@ import kotlin.coroutines.coroutineContext
 import kotlin.math.roundToInt
 import com.lanrhyme.micyou.audio.AndroidAudioSource
 import com.lanrhyme.micyou.audio.AudioLevelData
+import com.lanrhyme.micyou.audio.AudioMetrics
 import com.lanrhyme.micyou.network.AudioPacketMessage
 import com.lanrhyme.micyou.network.AudioPacketMessageOrdered
 import com.lanrhyme.micyou.network.CODEC_OPUS
@@ -89,7 +76,9 @@ import com.lanrhyme.micyou.service.AudioService
 import com.lanrhyme.micyou.util.ContextHelper
 import com.lanrhyme.micyou.util.getString
 import com.lanrhyme.micyou.util.Logger
+import com.lanrhyme.micyou.util.PerformanceConfig
 import com.lanrhyme.micyou.viewmodel.ConnectionMode
+import com.lanrhyme.micyou.viewmodel.NoiseReductionType
 import com.lanrhyme.micyou.viewmodel.StreamState
 import com.lanrhyme.micyou.viewmodel.TransportProtocol
 import com.lanrhyme.micyou.network.hasControlMessage
@@ -371,8 +360,15 @@ class AudioEngine constructor() {
     private val _audioLevels = MutableStateFlow(0f)
     val audioLevels: Flow<Float> = _audioLevels
 
+    private val _rawSpectrum = MutableStateFlow(FloatArray(0))
+    val rawSpectrum: Flow<FloatArray> = _rawSpectrum
+
+    private val _processedSpectrum = MutableStateFlow(FloatArray(0))
+    val processedSpectrum: Flow<FloatArray> = _processedSpectrum
     private val _audioLevelData = MutableStateFlow(AudioLevelData.SILENT)
     val audioLevelData: Flow<AudioLevelData> = _audioLevelData
+    private val _audioMetrics = MutableStateFlow<AudioMetrics?>(null)
+    val audioMetrics: Flow<AudioMetrics?> = _audioMetrics
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: Flow<String?> = _lastError
 
@@ -397,14 +393,21 @@ class AudioEngine constructor() {
     private val startStopMutex = Mutex()
     private val stopOperationMutex = Mutex()
     private val lifecycleJob = SupervisorJob()
-    private val lifecycleScope = CoroutineScope(lifecycleJob + Dispatchers.IO)
+    private val audioCoroutineExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        Logger.e("AudioEngine", "Unhandled coroutine error (${throwable.javaClass.simpleName}): ${throwable.message}", throwable)
+        if (throwable !is CancellationException) {
+            _state.value = StreamState.Error
+            _lastError.value = "Unhandled error: ${throwable.javaClass.simpleName} - ${throwable.message}"
+        }
+    }
+    private val lifecycleScope = CoroutineScope(lifecycleJob + Dispatchers.IO + audioCoroutineExceptionHandler)
     private val cleanupJob = SupervisorJob()
-    private val cleanupScope = CoroutineScope(cleanupJob + Dispatchers.IO)
+    private val cleanupScope = CoroutineScope(cleanupJob + Dispatchers.IO + audioCoroutineExceptionHandler)
     private val closed = AtomicBoolean(false)
     private val closeLock = Any()
     private var closeJob: Job? = null
     private val proto = ProtoBuf { }
-
+    
     @Volatile
     private var sendChannel: Channel<MessageWrapper>? = null
     @Volatile
@@ -415,11 +418,14 @@ class AudioEngine constructor() {
     private var activeInput: ByteReadChannel? = null
     @Volatile
     private var activeOutput: ByteWriteChannel? = null
-
+    
     @Volatile
     private var udpSocket: DatagramSocket? = null
     @Volatile
     private var udpServerAddress: InetSocketAddress? = null
+
+    @Volatile
+    private var enableStreamingNotification: Boolean = true
 
     @Volatile
     private var enableNS: Boolean = false
@@ -448,9 +454,9 @@ class AudioEngine constructor() {
     private val CHECK_2 = "MicYouCheck2"
 
     suspend fun start(
-        ip: String,
-        port: Int,
-        mode: ConnectionMode,
+        ip: String, 
+        port: Int, 
+        mode: ConnectionMode, 
         isClient: Boolean,
         sampleRate: SampleRate,
         channelCount: ChannelCount,
@@ -476,8 +482,17 @@ class AudioEngine constructor() {
         var requestToken = 0L
         var firstAttempt = true
         var startIgnored = false
-        val sessionId = sessionCounter.updateAndGet { current ->
-            if (current == Long.MAX_VALUE) 1L else current + 1L
+        // [API 21+ 兼容] 不使用 AtomicLong.updateAndGet { lambda } (Java 8 API)，
+        // 避免 D8 生成 $$ExternalSyntheticLambda 合成类放入第二个 DEX，
+        // 在 API 22 设备上触发 NoClassDefFoundError (MultiDex 加载失败)。
+        var sessionId: Long
+        while (true) {
+            val current = sessionCounter.get()
+            val next = if (current == Long.MAX_VALUE) 1L else current + 1L
+            if (sessionCounter.compareAndSet(current, next)) {
+                sessionId = next
+                break
+            }
         }
         while (launchedJob == null && !startIgnored) {
             stoppingJob = null
@@ -536,7 +551,7 @@ class AudioEngine constructor() {
                     var selectorManager: SelectorManager? = null
                     var closeConnection: () -> Unit = {}
                     val sessionJobIdentity = requireNotNull(coroutineContext[Job])
-
+                    
                     try {
                         if (lifecycleGeneration != sessionGeneration || !desiredRunning) {
                             throw CancellationException("Audio session superseded before initialization")
@@ -545,9 +560,9 @@ class AudioEngine constructor() {
                         // Opus 编码器仅支持 8/12/16/24/48kHz；把 44.1kHz 采集映射到 48kHz，
                         // 保证线上 codec 始终合法（44.1kHz 单独配置的用户极少）。
                         val opusSampleRate = if (androidSampleRate in OPUS_SAMPLE_RATES) androidSampleRate else 48000
-                        val androidChannelConfig = if (channelCount == ChannelCount.Stereo)
-                            android.media.AudioFormat.CHANNEL_IN_STEREO
-                        else
+                        val androidChannelConfig = if (channelCount == ChannelCount.Stereo) 
+                            android.media.AudioFormat.CHANNEL_IN_STEREO 
+                        else 
                             android.media.AudioFormat.CHANNEL_IN_MONO
                         val resolvedAudioFormat = resolveAudioFormat(audioFormat)
                         if (resolvedAudioFormat.captureFormat != audioFormat) {
@@ -627,7 +642,7 @@ class AudioEngine constructor() {
                             } else {
                                 Logger.d("AudioEngine", "NoiseSuppressor not available")
                             }
-
+                            
                             if (AutomaticGainControl.isAvailable()) {
                                 sessionAutomaticGainControl = AutomaticGainControl.create(sessionRecorder.audioSessionId)
                                 sessionAutomaticGainControl?.enabled = enableAGC
@@ -639,7 +654,7 @@ class AudioEngine constructor() {
                         } catch (e: Exception) {
                              Logger.w("AudioEngine", "Failed to initialize audio effects: ${e.message}")
                         }
-
+                        
                         val sessionSelectorManager = SelectorManager(Dispatchers.IO)
                         selectorManager = sessionSelectorManager
 
@@ -874,22 +889,20 @@ class AudioEngine constructor() {
                             var readBytes = 0
                             val audioData: ByteArray
 
-                            // [API 21+ 兼容] AudioRecord.read(float[], int, int, int) 是 API 23+ 才有的，
-                            // 低版本用 ByteBuffer 间接读取 float PCM 数据。
                             if (androidAudioFormat == android.media.AudioFormat.ENCODING_PCM_FLOAT && floatBuffer != null) {
+                                // [API 21+ 兼容] AudioRecord.read(float[], ...) 任意重载均为 API 23+，
+                                // API < 23 因 resolveAudioFormat 已将 PCM_FLOAT 降级为 PCM_16BIT，
+                                // floatBuffer 必为 null，故此分支实际上不会被触发；保留防御式降级。
                                 val readFloats = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                                     recorder.read(floatBuffer, 0, floatBuffer.size, AudioRecord.READ_NON_BLOCKING)
                                 } else {
-                                    // API < 23: 用 ByteBuffer 间接读取 float PCM
-                                    val byteBuf = ByteBuffer.allocateDirect(floatBuffer.size * 4)
-                                    val readBytes = recorder.read(byteBuf, floatBuffer.size * 4)
-                                    if (readBytes > 0) {
-                                        byteBuf.rewind()
-                                        byteBuf.asFloatBuffer().get(floatBuffer, 0, readBytes / 4)
-                                        readBytes / 4
-                                    } else {
-                                        readBytes // 负值或 0 直接返回
-                                    }
+                                    // 理论不可达：若进入则说明 resolveAudioFormat 与此处逻辑不同步，
+                                    // 记录错误并返回 ERROR，避免调用不存在的 read(float[], int, int) (API 23+)。
+                                    Logger.e(
+                                        "AudioEngine",
+                                        "Reached FLOAT read path on API ${Build.VERSION.SDK_INT}! read(float[]...) requires API 23."
+                                    )
+                                    AudioRecord.ERROR
                                 }
                                 if (readFloats > 0) {
                                     readBytes = readFloats * 4
@@ -899,11 +912,12 @@ class AudioEngine constructor() {
                                     audioData = ByteArray(0)
                                 }
                             } else {
-                                // [API 21+ 兼容] AudioRecord.read(byte[], int, int, int) 带 READ_NON_BLOCKING 是 API 23+ 才有的，
-                                // 低版本用 3 参数的阻塞版本（无 readMode 参数）。
+                                // [API 21+ 兼容] AudioRecord.read(byte[], int, int, int) 是 API 23+，
+                                // 带 READ_NON_BLOCKING 标志。API < 23 使用三参数版本（阻塞式读取）。
                                 readBytes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                                     recorder.read(buffer, 0, buffer.size, AudioRecord.READ_NON_BLOCKING)
                                 } else {
+                                    @Suppress("DEPRECATION")
                                     recorder.read(buffer, 0, buffer.size)
                                 }
                                 audioData = if (readBytes > 0) buffer.copyOfRange(0, readBytes) else ByteArray(0)
@@ -1014,35 +1028,47 @@ class AudioEngine constructor() {
                     } catch (e: CancellationException) {
                         connectionComplete.completeExceptionally(e)
                         throw e
-                    } catch (e: Exception) {
-                        // Closing the session channel is part of the normal stop path. A send
-                        // racing with that close must not surface "Channel is already closed"
-                        // as a connection error or prevent a subsequent reconnect.
-                        if (!desiredRunning || isChannelClosed(e)) {
-                            val cancellation = CancellationException("Audio session stopped")
-                            connectionComplete.completeExceptionally(cancellation)
-                            throw cancellation
+                    } catch (t: Throwable) {
+                        // ⚠️ 捕获 Throwable（包括 Error 级别的 NoSuchMethodError/NoClassDefFoundError/VerifyError）
+                        //   之前只 catch (Exception)，导致链接期错误直接逃逸造成闪退。
+                        Logger.e("AudioEngine", "Fatal session error: ${t.javaClass.name}", t)
+                        if (t is VirtualMachineError || t is LinkageError || t is Exception) {
+                            // Closing the session channel is part of the normal stop path. A send
+                            // racing with that close must not surface "Channel is already closed"
+                            // as a connection error or prevent a subsequent reconnect.
+                            val suppressed = t.message?.contains("Channel is already closed") == true
+                            if (!desiredRunning || isChannelClosed(t) || suppressed) {
+                                val cancellation = CancellationException("Audio session stopped")
+                                connectionComplete.completeExceptionally(cancellation)
+                                throw cancellation
+                            }
+                            val errorMsg = when {
+                                t is UdpCircuitBreakerException -> t.message ?: getString(R.string.connectionDisconnected)
+                                t is java.net.ConnectException && t.message?.contains("Connection refused", ignoreCase = true) == true ->
+                                    String.format(getString(R.string.connectionRejected), port)
+                                t is java.net.SocketTimeoutException ->
+                                    getString(R.string.connectionTimeout)
+                                t is java.net.NoRouteToHostException ->
+                                    getString(R.string.connectionUnreachable)
+                                t.message?.contains("Heartbeat timeout", ignoreCase = true) == true ->
+                                    t.message ?: getString(R.string.connectionUnreachable)
+                                t.message?.contains("Reader job failed", ignoreCase = true) == true ->
+                                    getString(R.string.connectionDisconnected)
+                                t is NoSuchMethodError -> "系统 API 不兼容 (NoSuchMethod): ${t.message}"
+                                t is NoClassDefFoundError -> "运行类缺失 (NoClassDef): ${t.message}"
+                                else -> t.message ?: getString(R.string.connectionDisconnected)
+                            }
+                            Logger.e("AudioEngine", "Connection lost (catch Throwable)", t)
+                            if (lifecycleGeneration == sessionGeneration) {
+                                _state.value = StreamState.Error
+                                _lastError.value = errorMsg
+                            }
+                            connectionComplete.completeExceptionally(Exception(errorMsg, t))
+                        } else {
+                            // 真正致命的（例如 OutOfMemoryError, StackOverflowError），重新抛出让系统处理
+                            connectionComplete.completeExceptionally(Exception("Fatal error: ${t.message}", t))
+                            throw t
                         }
-                        val errorMsg = when {
-                            e is UdpCircuitBreakerException -> e.message ?: getString(R.string.connectionDisconnected)
-                            e is java.net.ConnectException && e.message?.contains("Connection refused", ignoreCase = true) == true ->
-                                String.format(getString(R.string.connectionRejected), port)
-                            e is java.net.SocketTimeoutException ->
-                                getString(R.string.connectionTimeout)
-                            e is java.net.NoRouteToHostException ->
-                                getString(R.string.connectionUnreachable)
-                            e.message?.contains("Heartbeat timeout", ignoreCase = true) == true ->
-                                e.message ?: getString(R.string.connectionUnreachable)
-                            e.message?.contains("Reader job failed", ignoreCase = true) == true ->
-                                getString(R.string.connectionDisconnected)
-                            else -> e.message ?: getString(R.string.connectionDisconnected)
-                        }
-                        Logger.e("AudioEngine", "Connection lost", e)
-                        if (lifecycleGeneration == sessionGeneration) {
-                            _state.value = StreamState.Error
-                            _lastError.value = errorMsg
-                        }
-                        connectionComplete.completeExceptionally(Exception(errorMsg, e))
                     } finally {
                         connectionComplete.completeExceptionally(CancellationException("Audio session ended before startup completed"))
                         Logger.d("AudioEngine", "Cleaning up resources for generation $sessionGeneration")
@@ -1153,7 +1179,7 @@ class AudioEngine constructor() {
             throw e
         }
     }
-
+    
     /**
      * 把任意采集格式的 PCM 字节转成 16-bit LE Short（Opus 编码输入格式）。
      * @return 写入 out 的 sample 数量
@@ -1246,7 +1272,7 @@ class AudioEngine constructor() {
             updatedFailures
         }
     }
-
+    
     fun stop() {
         lifecycleScope.launch {
             try {
@@ -1490,6 +1516,12 @@ class AudioEngine constructor() {
             Logger.w("AudioEngine", "Failed to stop streaming notification: ${e.message}")
         }
     }
+    
+    fun setMonitoring(enabled: Boolean) { }
+
+    val installProgress: Flow<String?> = MutableStateFlow(null)
+    
+    suspend fun installDriver() { }
 
     suspend fun setMute(muted: Boolean) {
         _isMuted.value = muted
@@ -1499,6 +1531,44 @@ class AudioEngine constructor() {
              } catch (e: Exception) {
                  Logger.e("AudioEngine", "Failed to send mute message: ${e.message}")
              }
+        }
+    }
+
+    fun updateConfig(
+        enableNS: Boolean,
+        nsType: NoiseReductionType,
+        nsIntensity: Float,
+        enableAGC: Boolean,
+        agcTargetLevel: Int,
+        agcAttackRate: Float,
+        agcDecayRate: Float,
+        enableVAD: Boolean,
+        vadThreshold: Int,
+        enableDereverb: Boolean,
+        dereverbLevel: Float,
+        amplification: Float,
+        processingChain: List<AudioEffectType>,
+        equalizerConfig: EqualizerConfig
+    ) {
+        val nsChanged = this.enableNS != enableNS
+        val agcChanged = this.enableAGC != enableAGC
+
+        this.enableNS = enableNS
+        this.enableAGC = enableAGC
+        // Note: nsIntensity, agcAttackRate, agcDecayRate, dereverbLevel, amplification,
+        // processingChain, and equalizerConfig are currently ignored on Android
+        // as it uses hardware-based processing.
+
+        try {
+            noiseSuppressor?.enabled = enableNS
+            automaticGainControl?.enabled = enableAGC
+        } catch (e: Exception) {
+            Logger.e("AudioEngine", "Error updating audio effects: ${e.message}")
+        }
+
+        if ((nsChanged || agcChanged) && desiredRunning && _state.value == StreamState.Streaming) {
+            Logger.i("AudioEngine", "Hardware processing changed, restarting audio stream...")
+            scheduleConfigRestart()
         }
     }
 
@@ -1545,6 +1615,16 @@ class AudioEngine constructor() {
             } catch (e: Exception) {
                 Logger.e("AudioEngine", "Failed to restart audio stream after config change", e)
             }
+        }
+    }
+
+    fun setStreamingNotificationEnabled(enabled: Boolean) {
+        enableStreamingNotification = enabled
+        if (_state.value == StreamState.Streaming && !enabled) {
+            Logger.w(
+                "AudioEngine",
+                "Streaming notification cannot be hidden while Android requires a microphone foreground service"
+            )
         }
     }
 
@@ -1611,6 +1691,10 @@ class AudioEngine constructor() {
         val rms = Math.sqrt(sum / sampleCount).toFloat().coerceIn(0f, 1f)
     val peak = maxSample.toFloat().coerceIn(0f, 1f)
         return AudioLevelData.fromRmsAndPeak(rms, peak)
+    }
+
+    fun updatePerformanceConfig(config: PerformanceConfig) {
+        Logger.d("AudioEngine", "Android does not support dynamic performance config adjustment")
     }
 }
 
