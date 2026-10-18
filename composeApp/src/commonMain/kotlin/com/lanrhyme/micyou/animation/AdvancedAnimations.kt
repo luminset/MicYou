@@ -17,6 +17,10 @@ object EasingFunctions {
         if (x == 1f) 1f else 1f - 2f.pow(-10f * x)
     }
     
+    val EaseInExpo: Easing = Easing { x ->
+        if (x == 0f) 0f else 2f.pow(10f * (x - 1f))
+    }
+    
     val EaseInOutExpo: Easing = Easing { x ->
         when {
             x == 0f -> 0f

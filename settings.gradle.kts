@@ -26,6 +26,9 @@ dependencyResolutionManagement {
         }
         mavenCentral()
         maven {
+            url = uri("https://maven.pkg.jetbrains.space/public/p/compose/dev")
+        }
+        maven {
             url = uri("https://maven.maxhenkel.de/repository/public")
         }
         maven {
@@ -39,3 +42,4 @@ plugins {
 }
 
 include(":composeApp")
+include(":plugin-api")

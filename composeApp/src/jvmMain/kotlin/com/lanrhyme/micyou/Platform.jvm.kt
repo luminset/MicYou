@@ -132,7 +132,3 @@ actual fun getDynamicColorScheme(isDark: Boolean): ColorScheme? {
 }
 
 actual fun getAudioSourceOptions(): List<AudioSourceOption> = emptyList()
-
-actual fun availableAudioFormats(): List<AudioFormat> = AudioFormat.entries.toList()
-
-actual fun defaultAudioFormat(): AudioFormat = AudioFormat.PCM_FLOAT

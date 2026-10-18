@@ -48,6 +48,7 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.ExperimentalResourceApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -79,6 +80,7 @@ private data class ContributorBubble(
     var bitmap by mutableStateOf<ImageBitmap?>(null)
 }
 
+@OptIn(ExperimentalResourceApi::class)
 @Composable
 fun ContributorsDialog(onDismiss: () -> Unit) {
     val strings = LocalAppStrings.current

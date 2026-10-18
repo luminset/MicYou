@@ -1,13 +1,15 @@
 package com.lanrhyme.micyou.audio
 
 import com.lanrhyme.micyou.Logger
-import com.lanrhyme.micyou.BlackHoleManager
+import com.lanrhyme.micyou.platform.BlackHoleManager
+import com.lanrhyme.micyou.platform.PipeWireManager
 import com.lanrhyme.micyou.platform.PlatformInfo
-import com.lanrhyme.micyou.platform.VirtualAudioDevice
 import javax.sound.sampled.*
 
 class AudioOutputManager {
     private var outputLine: SourceDataLine? = null
+    private var monitorLoopbackProcess: Process? = null
+    private var monitorLine: SourceDataLine? = null
     private var isUsingVirtualDevice = false
     private var isMonitoring = false
     private var currentSampleRate = 0
@@ -52,20 +54,20 @@ class AudioOutputManager {
     private fun initLinux(audioFormat: AudioFormat, lineInfo: DataLine.Info): Boolean {
         Logger.d("AudioOutputManager", "Linux Platform: Try using PipeWire virtual devices")
         
-        if (!VirtualAudioDevice.isAvailable()) {
+        if (!PipeWireManager.isAvailable()) {
             Logger.w("AudioOutputManager", "PipeWire is unavailable; falling back to the default device.")
             return false
         }
         
-        if (!VirtualAudioDevice.isSetupComplete()) {
+        if (!PipeWireManager.isSetupComplete()) {
             Logger.i("AudioOutputManager", "Set up PipeWire virtual audio devices...")
-            if (!VirtualAudioDevice.setup()) {
+            if (!PipeWireManager.setup()) {
                 Logger.e("AudioOutputManager", "Failed to set up virtual audio device")
                 return false
             }
         }
         
-        val sinkName = VirtualAudioDevice.virtualSinkName
+        val sinkName = PipeWireManager.virtualSinkName
         Logger.i("AudioOutputManager", "Attempt to connect to the virtual sink: \$sinkName")
         
         val mixers = AudioSystem.getMixerInfo()
@@ -233,6 +235,12 @@ class AudioOutputManager {
         } catch (e: Exception) {
             Logger.e("AudioOutputManager", "Failed to write audio data", e)
         }
+        
+        try {
+            monitorLine?.write(buffer, offset, length)
+        } catch (e: Exception) {
+            Logger.e("AudioOutputManager", "Failed to write monitor audio data", e)
+        }
     }
     
     fun getQueuedDurationMs(): Long {
@@ -244,16 +252,103 @@ class AudioOutputManager {
     
     fun flush() {
         outputLine?.flush()
+        monitorLine?.flush()
     }
     
     fun setMonitoring(enabled: Boolean) {
         isMonitoring = enabled
+        if (enabled) {
+            startMonitorLoopback()
+        } else {
+            stopMonitorLoopback()
+        }
+    }
+    
+    private fun startMonitorLoopback() {
+        if (PlatformInfo.isLinux) {
+            startLinuxMonitorLoopback()
+        } else {
+            openMonitorLine()
+        }
+    }
+    
+    private fun startLinuxMonitorLoopback() {
+        if (monitorLoopbackProcess?.isAlive == true) return
+        if (!PipeWireManager.isSetupComplete()) {
+            Logger.w("AudioOutputManager", "Monitor loopback not available: virtual device not setup")
+            return
+        }
+        try {
+            val sinkName = PipeWireManager.virtualSinkName
+            val process = ProcessBuilder(
+                "pw-loopback",
+                "--capture-props={\"node.target\": \"$sinkName\", \"media.class\": \"Stream/Input/Audio\", \"stream.capture.sink\": true}",
+                "--playback-props={\"media.class\": \"Stream/Output/Audio\"}"
+            ).redirectErrorStream(true).start()
+            
+            Thread.sleep(200)
+            
+            if (process.isAlive) {
+                monitorLoopbackProcess = process
+                Logger.i("AudioOutputManager", "Monitor loopback started (pid: ${process.pid()})")
+            } else {
+                val output = process.inputStream.bufferedReader().readText()
+                Logger.e("AudioOutputManager", "Monitor loopback failed to start: $output")
+            }
+        } catch (e: Exception) {
+            Logger.e("AudioOutputManager", "Failed to start monitor loopback", e)
+        }
+    }
+    
+    private fun openMonitorLine() {
+        if (monitorLine != null) return
+        if (currentSampleRate == 0 || currentChannelCount == 0) return
+        
+        val audioFormat = AudioFormat(
+            currentSampleRate.toFloat(), 16, currentChannelCount, true, false
+        )
+        val lineInfo = DataLine.Info(SourceDataLine::class.java, audioFormat)
+        
+        try {
+            val line = AudioSystem.getLine(lineInfo) as SourceDataLine
+            val bytesPerSecond = (currentSampleRate * currentChannelCount * 2).coerceAtLeast(1)
+            line.open(audioFormat, (bytesPerSecond / 4).coerceIn(8192, 131072))
+            line.start()
+            monitorLine = line
+            Logger.i("AudioOutputManager", "Monitor line opened (system default speaker)")
+        } catch (e: Exception) {
+            Logger.e("AudioOutputManager", "Failed to open monitor line", e)
+        }
+    }
+    
+    private fun stopMonitorLoopback() {
+        monitorLoopbackProcess?.let { process ->
+            try {
+                if (process.isAlive) {
+                    process.destroy()
+                    Logger.i("AudioOutputManager", "Monitor loopback stopped")
+                }
+            } catch (e: Exception) {
+                Logger.e("AudioOutputManager", "Error stopping monitor loopback", e)
+            }
+        }
+        monitorLoopbackProcess = null
+        
+        try {
+            monitorLine?.stop()
+            monitorLine?.close()
+        } catch (e: Exception) {
+            Logger.e("AudioOutputManager", "Error closing monitor line", e)
+        }
+        monitorLine = null
     }
     
     fun isUsingVirtualDevice(): Boolean = isUsingVirtualDevice
     
     fun release() {
         Logger.d("AudioOutputManager", "Release audio output resources")
+        
+        stopMonitorLoopback()
         
         try {
             outputLine?.drain()
@@ -265,9 +360,9 @@ class AudioOutputManager {
         outputLine = null
         isUsingVirtualDevice = false
         
-        if (PlatformInfo.isLinux && VirtualAudioDevice.isSetupComplete()) {
+        if (PlatformInfo.isLinux && PipeWireManager.isSetupComplete()) {
             Logger.i("AudioOutputManager", "Cleaning Up Linux Virtual Audio Devices")
-            VirtualAudioDevice.cleanup()
+            PipeWireManager.cleanup()
         }
     }
     
@@ -275,3 +370,4 @@ class AudioOutputManager {
         return PlatformInfo.isLinux || PlatformInfo.isMacOS
     }
 }
+

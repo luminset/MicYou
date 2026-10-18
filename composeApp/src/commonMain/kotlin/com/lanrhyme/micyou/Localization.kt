@@ -55,10 +55,11 @@ data class AppStrings(
     val autoStartLabel: String = "Auto Start",
     val pocketModeLabel: String = "Compact Mode",
     val pocketModeDesc: String = "Use a compact window layout",
-    val monitoringLabel: String = "Monitoring (Desktop)",
+    val monitoringLabel: String = "Monitoring",
     val sampleRateLabel: String = "Sample Rate",
     val channelCountLabel: String = "Channels",
     val audioFormatLabel: String = "Audio Format",
+    val audioSourceLabel: String = "Audio Source",
     val enableNsLabel: String = "Noise Suppression",
     val nsTypeLabel: String = "Algorithm",
     val nsAlgorithmHelpTitle: String = "Noise Reduction Algorithms",
@@ -101,7 +102,10 @@ data class AppStrings(
     val developerLabel: String = "Developer",
     val githubRepoLabel: String = "GitHub Repository",
     val versionLabel: String = "Version",
-    val useDynamicColorLabel: String = "Use System Dynamic Color",
+    val useDynamicColorLabel: String = "Enable Dynamic Color",
+    val useDynamicColorDesc: String = "Use system accent color for app theme",
+    val dynamicColorActiveHint: String = "Currently using system dynamic color",
+    val dynamicColorEnabledHint: String = "Dynamic color is enabled",
     val androidAudioProcessingLabel: String = "Built-in Audio Processing",
     val androidAudioProcessingDesc: String = "Use hardware audio processing. May affect output quality.",
     val contributorsLabel: String = "Contributors",
@@ -157,6 +161,31 @@ data class AppStrings(
     val firstLaunchGuideButton: String = "View Usage Guide",
     val firstLaunchGotItButton: String = "I know how to use it",
 
+    // Plugins
+    val pluginsSection: String = "Plugins",
+    val importPlugin: String = "Import Plugin",
+    val noPluginsInstalled: String = "No plugins installed",
+    val deletePlugin: String = "Delete Plugin",
+    val deletePluginConfirm: String = "Are you sure you want to delete \"%s\"?",
+    val delete: String = "Delete",
+    val cancel: String = "Cancel",
+    val ok: String = "OK",
+    val pluginPlatformWarningTitle: String = "Platform Incompatible",
+    val pluginPlatformWarning: String = "Plugin \"%s\" is designed for %s platform and may not work correctly on your current device.",
+    val pluginImportTitle: String = "Import Plugin",
+    val pluginImportSelectFile: String = "Select Plugin File",
+    val pluginImporting: String = "Importing plugin...",
+    val pluginImportSuccess: String = "Plugin imported successfully",
+    val pluginImportFailed: String = "Failed to import plugin: %s",
+    val pluginEnabled: String = "Plugin enabled",
+    val pluginDisabled: String = "Plugin disabled",
+    val pluginSyncWarningTitle: String = "Plugin Sync Warning",
+    val pluginSyncWarningMessage: String = "The following cross-platform plugins are not installed on both devices:",
+    val missingOn: String = "Missing on",
+    val pluginSyncDismiss: String = "Dismiss",
+    val pluginOpenWindow: String = "Open Window",
+    val pluginSettings: String = "Settings",
+
     // BlackHole (macOS virtual audio)
     val blackHoleInstalled: String = "BlackHole is installed, please configure in System Settings",
     val blackHoleNotInstalled: String = "Please install BlackHole virtual audio driver manually",
@@ -208,7 +237,11 @@ data class AppStrings(
     
     // Floating Window
     val floatingWindowLabel: String = "Floating Window",
-    val floatingWindowDesc: String = "Show a small always-on-top window with audio visualization"
+    val floatingWindowDesc: String = "Show a small always-on-top window with audio visualization",
+    
+    // System Title Bar
+    val useSystemTitleBarLabel: String = "System Title Bar",
+    val useSystemTitleBarDesc: String = "Use native system window decorations instead of custom title bar"
 )
 
 val LocalAppStrings = staticCompositionLocalOf { AppStrings() }

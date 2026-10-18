@@ -60,11 +60,16 @@ class AudioService : Service() {
 
     private fun createNotification(): Notification {
         val disconnectIntent = Intent(this, AudioService::class.java).apply { action = ACTION_DISCONNECT }
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
         val disconnectPendingIntent = PendingIntent.getService(
             this,
             0,
             disconnectIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            flags
         )
         val (title, text) = resolveNotificationText()
 

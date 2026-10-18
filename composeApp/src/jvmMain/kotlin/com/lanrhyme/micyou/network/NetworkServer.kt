@@ -27,7 +27,8 @@ import javax.microedition.io.StreamConnectionNotifier
  */
 class NetworkServer(
     private val onAudioPacketReceived: suspend (AudioPacketMessage) -> Unit,
-    private val onMuteStateChanged: (Boolean) -> Unit
+    private val onMuteStateChanged: (Boolean) -> Unit,
+    private val onPluginSyncReceived: ((PluginSyncMessage) -> Unit)? = null
 ) {
     private val _state = MutableStateFlow(StreamState.Idle)
     val state = _state.asStateFlow()
@@ -128,6 +129,10 @@ class NetworkServer(
         linuxBlueZServer?.sendMuteState(muted)
     }
 
+    suspend fun sendPluginSync(plugins: List<PluginInfoMessage>, platform: String) {
+        activeHandler?.sendPluginSync(plugins, platform)
+    }
+
     private suspend fun runTcpServer(port: Int) {
         try {
             selectorManager = SelectorManager(Dispatchers.IO)
@@ -213,6 +218,7 @@ class NetworkServer(
             output = output,
             onAudioPacketReceived = onAudioPacketReceived,
             onMuteStateChanged = onMuteStateChanged,
+            onPluginSyncReceived = onPluginSyncReceived,
             onError = { error ->
                 _lastError.value = error
             }

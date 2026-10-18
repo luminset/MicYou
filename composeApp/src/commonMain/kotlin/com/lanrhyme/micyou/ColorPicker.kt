@@ -50,11 +50,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.layout.Measurable
-import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 
@@ -480,6 +477,7 @@ fun ColorSelectorWithPicker(
     presetColors: List<Long>,
     onColorSelected: (Long) -> Unit,
     enabled: Boolean = true,
+    disabledHint: String = "Dynamic color is enabled",
     modifier: Modifier = Modifier
 ) {
     var customColor by remember { mutableStateOf<Long?>(null) }
@@ -488,26 +486,25 @@ fun ColorSelectorWithPicker(
     val allColors = presetColors + (customColor ?: selectedColor)
     val isCustomSelected = customColor != null && selectedColor == customColor
 
-    Column(modifier = modifier) {
-        // 使用网格布局显示颜色
-        ColorGrid(
-            colors = allColors,
-            selectedColor = selectedColor,
-            onColorSelected = { colorHex ->
-                if (enabled) {
-                    if (colorHex == allColors.last() && isCustomSelected) {
-                        // 点击的是自定义颜色按钮
-                        onColorSelected(colorHex)
-                    } else {
-                        onColorSelected(colorHex)
-                    }
+    // 使用网格布局显示颜色
+    ColorGrid(
+        colors = allColors,
+        selectedColor = selectedColor,
+        onColorSelected = { colorHex ->
+            if (enabled) {
+                if (colorHex == allColors.last() && isCustomSelected) {
+                    // 点击的是自定义颜色按钮
+                    onColorSelected(colorHex)
+                } else {
+                    onColorSelected(colorHex)
                 }
-            },
-            onCustomColorClick = { /* 自定义颜色按钮单独处理 */ },
-            enabled = enabled,
-            columns = 5
-        )
-    }
+            }
+        },
+        onCustomColorClick = { /* 自定义颜色按钮单独处理 */ },
+        enabled = enabled,
+        columns = 5,
+        modifier = modifier
+    )
 }
 
 /**
@@ -520,12 +517,14 @@ private fun ColorGrid(
     onColorSelected: (Long) -> Unit,
     onCustomColorClick: () -> Unit,
     enabled: Boolean = true,
-    columns: Int = 5
+    columns: Int = 5,
+    modifier: Modifier = Modifier
 ) {
     val itemSize = 40.dp
     val spacing = 12.dp
 
     Column(
+        modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(spacing)
     ) {
         // 将颜色分组，每行 columns 个
@@ -658,73 +657,5 @@ private fun CustomColorOption(
             },
             onDismiss = { showDialog = false }
         )
-    }
-}
-
-// FlowRow 实现（简化版）
-@Composable
-private fun FlowRow(
-    modifier: Modifier = Modifier,
-    horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
-    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
-    content: @Composable () -> Unit
-) {
-    Layout(
-        content = content,
-        modifier = modifier
-    ) { measurables: List<Measurable>, constraints: Constraints ->
-        val hGapPx = 12.dp.roundToPx()
-        val vGapPx = 12.dp.roundToPx()
-
-        val rows = mutableListOf<List<Placeable>>()
-        val rowWidths = mutableListOf<Int>()
-        val rowHeights = mutableListOf<Int>()
-
-        var currentRow = mutableListOf<Placeable>()
-        var currentRowWidth = 0
-        var currentRowHeight = 0
-
-        measurables.forEach { measurable ->
-            val placeable = measurable.measure(constraints)
-
-            if (currentRow.isNotEmpty() && currentRowWidth + hGapPx + placeable.width > constraints.maxWidth) {
-                rows.add(currentRow.toList())
-                rowWidths.add(currentRowWidth)
-                rowHeights.add(currentRowHeight)
-                currentRow.clear()
-                currentRowWidth = 0
-                currentRowHeight = 0
-            }
-
-            currentRow.add(placeable)
-            currentRowWidth += if (currentRow.size == 1) placeable.width else hGapPx + placeable.width
-            currentRowHeight = maxOf(currentRowHeight, placeable.height)
-        }
-
-        if (currentRow.isNotEmpty()) {
-            rows.add(currentRow.toList())
-            rowWidths.add(currentRowWidth)
-            rowHeights.add(currentRowHeight)
-        }
-
-        val totalHeight = rowHeights.sum() + maxOf(0, rowHeights.size - 1) * vGapPx
-
-        layout(constraints.maxWidth, totalHeight) {
-            var y = 0
-            rows.forEachIndexed { rowIndex, row ->
-                var x = when (horizontalArrangement) {
-                    Arrangement.Center -> (constraints.maxWidth - rowWidths[rowIndex]) / 2
-                    Arrangement.End -> constraints.maxWidth - rowWidths[rowIndex]
-                    else -> 0
-                }
-
-                row.forEach { placeable ->
-                    placeable.placeRelative(x, y)
-                    x += placeable.width + hGapPx
-                }
-
-                y += rowHeights[rowIndex] + vGapPx
-            }
-        }
     }
 }

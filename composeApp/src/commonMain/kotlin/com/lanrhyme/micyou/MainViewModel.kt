@@ -219,10 +219,8 @@ class MainViewModel : ViewModel() {
         val savedChannelCountName = settings.getString("channel_count", ChannelCount.Stereo.name)
         val savedChannelCount = try { ChannelCount.valueOf(savedChannelCountName) } catch(e: Exception) { ChannelCount.Stereo }
 
-        val savedAudioFormatName = settings.getString("audio_format", defaultAudioFormat().name)
-        val savedAudioFormat = try { AudioFormat.valueOf(savedAudioFormatName) } catch(e: Exception) { defaultAudioFormat() }
-        // 校验已保存的格式在当前设备是否可用，不可用则回退到安全默认值
-        val effectiveAudioFormat = if (availableAudioFormats().contains(savedAudioFormat)) savedAudioFormat else defaultAudioFormat()
+        val savedAudioFormatName = settings.getString("audio_format", AudioFormat.PCM_FLOAT.name)
+        val savedAudioFormat = try { AudioFormat.valueOf(savedAudioFormatName) } catch(e: Exception) { AudioFormat.PCM_FLOAT }
 
         val savedNS = settings.getBoolean("enable_ns", false)
         val savedNSTypeName = settings.getString("ns_type", NoiseReductionType.Ulunas.name)
@@ -293,7 +291,7 @@ class MainViewModel : ViewModel() {
                 monitoringEnabled = savedMonitoring,
                 sampleRate = savedSampleRate,
                 channelCount = savedChannelCount,
-                audioFormat = effectiveAudioFormat,
+                audioFormat = savedAudioFormat,
                 enableNS = savedNS,
                 nsType = savedNSType,
                 enableAGC = savedAGC,

@@ -1,10 +1,13 @@
 package com.lanrhyme.micyou
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.Modifier
@@ -23,67 +26,55 @@ fun App(
 ) {
     val platform = remember { getPlatform() }
     val isClient = platform.type == PlatformType.Android
-    
+
     // Use passed viewModel or create one
     val finalViewModel = viewModel ?: if (isClient) viewModel { MainViewModel() } else remember { MainViewModel() }
 
-    val themeMode by finalViewModel.uiState.collectAsState().let { state ->
-        derivedStateOf { state.value.themeMode }
-    }
-    val seedColor by finalViewModel.uiState.collectAsState().let { state ->
-        derivedStateOf { state.value.seedColor }
-    }
-    val useDynamicColor by finalViewModel.uiState.collectAsState().let { state ->
-        derivedStateOf { state.value.useDynamicColor }
-    }
-    val oledPureBlack by finalViewModel.uiState.collectAsState().let { state ->
-        derivedStateOf { state.value.oledPureBlack }
-    }
-    
-    // Convert Long color to Color object
-    val seedColorObj = androidx.compose.ui.graphics.Color(seedColor.toInt())
-    
-    val language by finalViewModel.uiState.collectAsState().let { state ->
-        derivedStateOf { state.value.language }
-    }
-    
-    val strings = getStrings(language)
-
     val uiState by finalViewModel.uiState.collectAsState()
+    val seedColorObj = androidx.compose.ui.graphics.Color(uiState.seedColor.toInt())
+    val strings = getStrings(uiState.language)
+
     val newVersionAvailable = uiState.newVersionAvailable
     val pocketMode = uiState.pocketMode
+    val useSystemTitleBar = uiState.useSystemTitleBar
     val showFirstLaunchDialog = uiState.showFirstLaunchDialog
 
     CompositionLocalProvider(LocalAppStrings provides strings) {
         AppTheme(
-            themeMode = themeMode,
+            themeMode = uiState.themeMode,
             seedColor = seedColorObj,
-            useDynamicColor = useDynamicColor,
-            oledPureBlack = oledPureBlack
+            useDynamicColor = uiState.useDynamicColor,
+            oledPureBlack = uiState.oledPureBlack
         ) {
             if (platform.type == PlatformType.Android) {
                 MobileHome(finalViewModel)
             } else {
-                if (pocketMode) {
-                    DesktopHome(
-                        viewModel = finalViewModel,
-                        onMinimize = onMinimize,
-                        onClose = onClose,
-                        onExitApp = onExitApp,
-                        onHideApp = onHideApp,
-                        onOpenSettings = onOpenSettings,
-                        isBluetoothDisabled = isBluetoothDisabled
-                    )
-                } else {
-                    DesktopHomeEnhanced(
-                        viewModel = finalViewModel,
-                        onMinimize = onMinimize,
-                        onClose = onClose,
-                        onExitApp = onExitApp,
-                        onHideApp = onHideApp,
-                        onOpenSettings = onOpenSettings,
-                        isBluetoothDisabled = isBluetoothDisabled
-                    )
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = if (useSystemTitleBar) RoundedCornerShape(0.dp) else RoundedCornerShape(22.dp)
+                ) {
+                    if (pocketMode) {
+                        DesktopHome(
+                            viewModel = finalViewModel,
+                            onMinimize = onMinimize,
+                            onClose = onClose,
+                            onExitApp = onExitApp,
+                            onHideApp = onHideApp,
+                            onOpenSettings = onOpenSettings,
+                            isBluetoothDisabled = isBluetoothDisabled
+                        )
+                    } else {
+                        DesktopHomeEnhanced(
+                            viewModel = finalViewModel,
+                            onMinimize = onMinimize,
+                            onClose = onClose,
+                            onExitApp = onExitApp,
+                            onHideApp = onHideApp,
+                            onOpenSettings = onOpenSettings,
+                            isBluetoothDisabled = isBluetoothDisabled
+                        )
+                    }
                 }
             }
 
@@ -154,8 +145,8 @@ fun App(
                 )
             }
 
-            // First Launch Dialog (Desktop only)
-            if (showFirstLaunchDialog && platform.type != PlatformType.Android) {
+            // First Launch Dialog
+            if (showFirstLaunchDialog) {
                 AlertDialog(
                     onDismissRequest = { },
                     title = { Text(strings.firstLaunchTitle) },

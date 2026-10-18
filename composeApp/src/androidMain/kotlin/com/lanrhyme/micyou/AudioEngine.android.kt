@@ -6,7 +6,6 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
-import android.os.Build
 import io.ktor.network.selector.SelectorManager
 import io.ktor.network.sockets.Socket
 import io.ktor.network.sockets.aSocket
@@ -165,10 +164,7 @@ actual class AudioEngine actual constructor() {
                         val androidAudioFormat = when(audioFormat) {
                             com.lanrhyme.micyou.AudioFormat.PCM_8BIT -> AudioFormat.ENCODING_PCM_8BIT
                             com.lanrhyme.micyou.AudioFormat.PCM_16BIT -> AudioFormat.ENCODING_PCM_16BIT
-                            // AudioRecord.read(float[], ...) 重载均为 API 23+，API < 23 降级为 PCM_16BIT 避免 NoSuchMethodError
-                            com.lanrhyme.micyou.AudioFormat.PCM_FLOAT ->
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) AudioFormat.ENCODING_PCM_FLOAT
-                                else AudioFormat.ENCODING_PCM_16BIT
+                            com.lanrhyme.micyou.AudioFormat.PCM_FLOAT -> AudioFormat.ENCODING_PCM_FLOAT
                             else -> AudioFormat.ENCODING_PCM_16BIT // Default fallback
                         }
                         
@@ -390,8 +386,7 @@ actual class AudioEngine actual constructor() {
                             var readBytes = 0
                             val audioData: ByteArray
 
-                            if (androidAudioFormat == AudioFormat.ENCODING_PCM_FLOAT && floatBuffer != null
-                                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            if (androidAudioFormat == AudioFormat.ENCODING_PCM_FLOAT && floatBuffer != null) {
                                 val readFloats = recorder.read(floatBuffer, 0, floatBuffer.size, AudioRecord.READ_BLOCKING)
                                 if (readFloats > 0) {
                                     readBytes = readFloats * 4

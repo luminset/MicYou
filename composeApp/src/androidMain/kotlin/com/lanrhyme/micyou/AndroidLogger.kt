@@ -34,6 +34,11 @@ class AndroidLogger(private val context: Context) : LoggerImpl {
         } catch (e: Exception) {
             Log.e("AndroidLogger", "Failed to write log to file", e)
         }
+
+        // 同时使用 ErrorLogger 记录错误（用于调试）
+        if (level == LogLevel.ERROR) {
+            ErrorLogger.logError(tag, message, throwable)
+        }
     }
 
     override fun getLogFilePath(): String? {

@@ -1,6 +1,6 @@
-package com.lanrhyme.micyou
+package com.lanrhyme.micyou.platform
 
-import com.lanrhyme.micyou.platform.PlatformInfo
+import com.lanrhyme.micyou.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.sound.sampled.AudioSystem

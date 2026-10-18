@@ -2,7 +2,7 @@ package com.lanrhyme.micyou.platform
 
 import com.lanrhyme.micyou.Logger
 
-object VirtualAudioDevice {
+object PipeWireManager {
     private const val SINK_NAME = "MicYouVirtualSink"
     private const val SOURCE_NAME = "MicYouVirtualMic"
     private const val SINK_MONITOR = "MicYouVirtualSink.monitor"
@@ -16,6 +16,8 @@ object VirtualAudioDevice {
     val virtualSinkMonitor: String get() = SINK_MONITOR
     
     fun isAvailable(): Boolean {
+        if (!PlatformInfo.isLinux) return false
+        
         return try {
             val process = ProcessBuilder("pw-cli", "--version")
                 .redirectErrorStream(true)
@@ -28,32 +30,37 @@ object VirtualAudioDevice {
     }
     
     fun isSetupComplete(): Boolean = isSetup
+
+    fun isInstalled(): Boolean {
+        if (!PlatformInfo.isLinux) return false
+        return deviceExists()
+    }
     
     fun setup(): Boolean {
         if (!PlatformInfo.isLinux) {
-            Logger.w("VirtualAudioDevice", "虚拟音频设备仅支持 Linux 平台")
+            Logger.w("PipeWireManager", "PipeWire virtual audio device only supports Linux platform")
             return false
         }
         
         if (!isAvailable()) {
-            Logger.e("VirtualAudioDevice", "PipeWire 不可用")
+            Logger.e("PipeWireManager", "PipeWire is not available")
             return false
         }
         
-        Logger.i("VirtualAudioDevice", "开始设置 PipeWire 虚拟音频设备...")
+        Logger.i("PipeWireManager", "Setting up PipeWire virtual audio device...")
         
         return try {
             cleanup()
             
             if (!createVirtualSink()) {
-                Logger.e("VirtualAudioDevice", "创建虚拟 Sink 失败")
+                Logger.e("PipeWireManager", "Failed to create virtual Sink")
                 return false
             }
             
             Thread.sleep(500)
             
             if (!createLoopback()) {
-                Logger.e("VirtualAudioDevice", "创建回环失败")
+                Logger.e("PipeWireManager", "Failed to create loopback")
                 cleanup()
                 return false
             }
@@ -61,25 +68,25 @@ object VirtualAudioDevice {
             Thread.sleep(500)
             
             if (!hideVirtualSink()) {
-                Logger.w("VirtualAudioDevice", "隐藏虚拟 Sink 失败（非致命错误）")
+                Logger.w("PipeWireManager", "Failed to hide virtual Sink (non-fatal)")
             }
             
             if (!setDefaultSource()) {
-                Logger.w("VirtualAudioDevice", "设置默认源失败（非致命错误）")
+                Logger.w("PipeWireManager", "Failed to set default source (non-fatal)")
             }
             
             isSetup = true
-            Logger.i("VirtualAudioDevice", "虚拟音频设备设置完成")
+            Logger.i("PipeWireManager", "Virtual audio device setup complete")
             true
         } catch (e: Exception) {
-            Logger.e("VirtualAudioDevice", "设置虚拟音频设备时出错", e)
+            Logger.e("PipeWireManager", "Error setting up virtual audio device", e)
             cleanup()
             false
         }
     }
     
     private fun createVirtualSink(): Boolean {
-        Logger.d("VirtualAudioDevice", "创建虚拟 Sink: $SINK_NAME")
+        Logger.d("PipeWireManager", "Creating virtual Sink: $SINK_NAME")
         
         return try {
             val process = ProcessBuilder(
@@ -98,20 +105,20 @@ object VirtualAudioDevice {
             if (exitCode == 0 || output.contains("created") || output.contains("bound")) {
                 val idMatch = Regex("(\\d+)").find(output)
                 sinkNodeId = idMatch?.groupValues?.get(1)
-                Logger.i("VirtualAudioDevice", "虚拟 Sink 创建成功 (id: $sinkNodeId)")
+                Logger.i("PipeWireManager", "Virtual Sink created successfully (id: $sinkNodeId)")
                 true
             } else {
-                Logger.e("VirtualAudioDevice", "创建虚拟 Sink 失败: $output")
+                Logger.e("PipeWireManager", "Failed to create virtual Sink: $output")
                 false
             }
         } catch (e: Exception) {
-            Logger.e("VirtualAudioDevice", "创建虚拟 Sink 时出错", e)
+            Logger.e("PipeWireManager", "Error creating virtual Sink", e)
             false
         }
     }
     
     private fun createLoopback(): Boolean {
-        Logger.d("VirtualAudioDevice", "创建回环: $SINK_NAME -> $SOURCE_NAME")
+        Logger.d("PipeWireManager", "Creating loopback: $SINK_NAME -> $SOURCE_NAME")
         
         return try {
             val process = ProcessBuilder(
@@ -125,21 +132,21 @@ object VirtualAudioDevice {
             Thread.sleep(200)
             
             if (process.isAlive) {
-                Logger.i("VirtualAudioDevice", "回环创建成功 (pid: ${process.pid()})")
+                Logger.i("PipeWireManager", "Loopback created successfully (pid: ${process.pid()})")
                 true
             } else {
                 val output = process.inputStream.bufferedReader().readText()
-                Logger.e("VirtualAudioDevice", "创建回环失败: $output")
+                Logger.e("PipeWireManager", "Failed to create loopback: $output")
                 false
             }
         } catch (e: Exception) {
-            Logger.e("VirtualAudioDevice", "创建回环时出错", e)
+            Logger.e("PipeWireManager", "Error creating loopback", e)
             false
         }
     }
     
     private fun hideVirtualSink(): Boolean {
-        Logger.d("VirtualAudioDevice", "隐藏虚拟 Sink: $SINK_NAME")
+        Logger.d("PipeWireManager", "Hiding virtual Sink: $SINK_NAME")
         
         return try {
             val process = ProcessBuilder(
@@ -153,20 +160,20 @@ object VirtualAudioDevice {
             val exitCode = process.waitFor()
             
             if (exitCode == 0) {
-                Logger.i("VirtualAudioDevice", "虚拟 Sink 已隐藏")
+                Logger.i("PipeWireManager", "Virtual Sink hidden")
                 true
             } else {
-                Logger.w("VirtualAudioDevice", "隐藏虚拟 Sink 失败: $output")
+                Logger.w("PipeWireManager", "Failed to hide virtual Sink: $output")
                 false
             }
         } catch (e: Exception) {
-            Logger.e("VirtualAudioDevice", "隐藏虚拟 Sink 时出错", e)
+            Logger.e("PipeWireManager", "Error hiding virtual Sink", e)
             false
         }
     }
     
     private fun setDefaultSource(): Boolean {
-        Logger.d("VirtualAudioDevice", "设置默认源: $SOURCE_NAME")
+        Logger.d("PipeWireManager", "Setting default source: $SOURCE_NAME")
         
         return try {
             val process = ProcessBuilder(
@@ -186,14 +193,14 @@ object VirtualAudioDevice {
             val exitCode = setDefaultProcess.waitFor()
             
             if (exitCode == 0) {
-                Logger.i("VirtualAudioDevice", "默认源设置成功")
+                Logger.i("PipeWireManager", "Default source set successfully")
                 true
             } else {
-                Logger.w("VirtualAudioDevice", "设置默认源失败: $output")
+                Logger.w("PipeWireManager", "Failed to set default source: $output")
                 tryFallbackSetDefaultSource()
             }
         } catch (e: Exception) {
-            Logger.e("VirtualAudioDevice", "设置默认源时出错", e)
+            Logger.e("PipeWireManager", "Error setting default source", e)
             tryFallbackSetDefaultSource()
         }
     }
@@ -209,44 +216,44 @@ object VirtualAudioDevice {
             val exitCode = process.waitFor()
             
             if (exitCode == 0) {
-                Logger.i("VirtualAudioDevice", "使用 pactl 设置默认源成功")
+                Logger.i("PipeWireManager", "Default source set using pactl")
                 true
             } else {
-                Logger.w("VirtualAudioDevice", "pactl 设置默认源失败: $output")
+                Logger.w("PipeWireManager", "pactl failed to set default source: $output")
                 false
             }
         } catch (e: Exception) {
-            Logger.e("VirtualAudioDevice", "pactl 设置默认源时出错", e)
+            Logger.e("PipeWireManager", "Error setting default source with pactl", e)
             false
         }
     }
     
     fun cleanup() {
-        Logger.i("VirtualAudioDevice", "清理虚拟音频设备...")
+        Logger.i("PipeWireManager", "Cleaning up virtual audio device...")
         
         loopbackProcess?.let { process ->
             try {
                 if (process.isAlive) {
                     process.destroy()
-                    Logger.d("VirtualAudioDevice", "回环进程已终止")
+                    Logger.d("PipeWireManager", "Loopback process terminated")
                 }
             } catch (e: Exception) {
-                Logger.e("VirtualAudioDevice", "终止回环进程时出错", e)
+                Logger.e("PipeWireManager", "Error terminating loopback process", e)
             }
             loopbackProcess = null
         }
         
-        destroyNodeByName(SOURCE_NAME, "虚拟 Source")
+        destroyNodeByName(SOURCE_NAME, "Virtual Source")
         
         if (sinkNodeId != null) {
-            destroyNode(sinkNodeId!!, "虚拟 Sink")
+            destroyNode(sinkNodeId!!, "Virtual Sink")
             sinkNodeId = null
         } else {
-            destroyNodeByName(SINK_NAME, "虚拟 Sink")
+            destroyNodeByName(SINK_NAME, "Virtual Sink")
         }
         
         isSetup = false
-        Logger.i("VirtualAudioDevice", "虚拟音频设备清理完成")
+        Logger.i("PipeWireManager", "Virtual audio device cleanup complete")
     }
     
     private fun destroyNode(nodeId: String, description: String) {
@@ -259,12 +266,12 @@ object VirtualAudioDevice {
             val exitCode = process.waitFor()
             
             if (exitCode == 0) {
-                Logger.d("VirtualAudioDevice", "$description 已销毁 (id: $nodeId)")
+                Logger.d("PipeWireManager", "$description destroyed (id: $nodeId)")
             } else {
-                Logger.w("VirtualAudioDevice", "销毁 $description 失败: $output")
+                Logger.w("PipeWireManager", "Failed to destroy $description: $output")
             }
         } catch (e: Exception) {
-            Logger.e("VirtualAudioDevice", "销毁 $description 时出错", e)
+            Logger.e("PipeWireManager", "Error destroying $description", e)
         }
     }
     
@@ -278,12 +285,12 @@ object VirtualAudioDevice {
             val exitCode = process.waitFor()
             
             if (exitCode == 0 || output.contains("not found") || output.contains("No such")) {
-                Logger.d("VirtualAudioDevice", "$description 已销毁或不存在 (name: $nodeName)")
+                Logger.d("PipeWireManager", "$description destroyed or not found (name: $nodeName)")
             } else {
-                Logger.w("VirtualAudioDevice", "销毁 $description 失败: $output")
+                Logger.w("PipeWireManager", "Failed to destroy $description: $output")
             }
         } catch (e: Exception) {
-            Logger.e("VirtualAudioDevice", "销毁 $description 时出错", e)
+            Logger.e("PipeWireManager", "Error destroying $description", e)
         }
     }
     

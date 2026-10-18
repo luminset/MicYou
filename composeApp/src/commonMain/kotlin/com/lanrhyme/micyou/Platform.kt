@@ -68,3 +68,13 @@ interface LoggerImpl {
 @Composable
 expect fun getDynamicColorScheme(isDark: Boolean): ColorScheme?
 
+// 检查当前平台是否支持动态取色
+expect fun isDynamicColorSupported(): Boolean
+
+// 获取动态种子色（用于启动时初始化）
+expect fun getDynamicSeedColor(): Long?
+
+data class AudioSourceOption(val name: String, val label: String)
+
+expect fun getAudioSourceOptions(): List<AudioSourceOption>
+

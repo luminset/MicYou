@@ -9,24 +9,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
+
+// 使用expect/actual模式支持不同平台的haze效果
+expect class HazeState
 
 @Composable
-fun rememberHazeState(): HazeState {
-    return remember { HazeState() }
-}
+expect fun rememberHazeState(): HazeState?
 
 @Composable
 fun CustomBackground(
@@ -45,21 +39,13 @@ fun CustomBackground(
     if (!settings.hasCustomBackground) {
         return
     }
-    
+
     val imageBitmap = remember(settings.imagePath) {
         loadImageBitmap(settings.imagePath)
     }
-    
+
     if (imageBitmap != null) {
-        Box(
-            modifier = modifier.then(
-                if (hazeState != null && settings.enableHazeEffect) {
-                    Modifier.hazeSource(state = hazeState)
-                } else {
-                    Modifier
-                }
-            )
-        ) {
+        Box(modifier = modifier) {
             Image(
                 bitmap = imageBitmap,
                 contentDescription = null,
@@ -68,7 +54,7 @@ fun CustomBackground(
                     .blur(radius = settings.blurRadius.dp),
                 contentScale = ContentScale.Crop
             )
-            
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -79,66 +65,24 @@ fun CustomBackground(
 }
 
 @Composable
-fun HazeCard(
+expect fun HazeCard(
     hazeState: HazeState?,
     enabled: Boolean,
-    modifier: Modifier = Modifier,
-    hazeColor: Color = Color.White.copy(alpha = 0.7f),
+    modifier: Modifier,
+    hazeColor: Color,
     content: @Composable () -> Unit
-) {
-    if (enabled && hazeState != null) {
-        Box(
-            modifier = modifier.hazeEffect(
-                state = hazeState,
-                style = HazeStyle(
-                    backgroundColor = hazeColor,
-                    tints = listOf(HazeTint(color = hazeColor))
-                )
-            )
-        ) {
-            content()
-        }
-    } else {
-        Box(modifier = modifier) {
-            content()
-        }
-    }
-}
+)
 
 @Composable
-fun HazeSurface(
+expect fun HazeSurface(
     hazeState: HazeState?,
     enabled: Boolean,
-    modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(16.dp),
-    color: Color = Color.Transparent,
-    hazeColor: Color = Color.White.copy(alpha = 0.7f),
+    modifier: Modifier,
+    shape: Shape,
+    color: Color,
+    hazeColor: Color = color,
     content: @Composable () -> Unit
-) {
-    if (enabled && hazeState != null) {
-        Box(
-            modifier = modifier
-                .clip(shape)
-                .hazeEffect(
-                    state = hazeState,
-                    style = HazeStyle(
-                        backgroundColor = hazeColor,
-                        tints = listOf(HazeTint(color = hazeColor))
-                    )
-                )
-        ) {
-            content()
-        }
-    } else {
-        Box(
-            modifier = modifier
-                .clip(shape)
-                .background(color)
-        ) {
-            content()
-        }
-    }
-}
+)
 
 @Composable
 fun CardWithOpacity(

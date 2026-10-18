@@ -50,6 +50,21 @@ data class MuteMessage(
 @Serializable
 class ConnectMessage
 
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class PluginInfoMessage(
+    @ProtoNumber(1) val id: String,
+    @ProtoNumber(2) val name: String,
+    @ProtoNumber(3) val version: String
+)
+
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class PluginSyncMessage(
+    @ProtoNumber(1) val plugins: List<PluginInfoMessage> = emptyList(),
+    @ProtoNumber(2) val platform: String = ""
+)
+
 const val PACKET_MAGIC = 0x4D696359 // "MicY" in ASCII
 
 @OptIn(ExperimentalSerializationApi::class)
@@ -57,6 +72,7 @@ const val PACKET_MAGIC = 0x4D696359 // "MicY" in ASCII
 data class MessageWrapper(
     @ProtoNumber(1) val audioPacket: AudioPacketMessageOrdered? = null,
     @ProtoNumber(2) val connect: ConnectMessage? = null,
-    @ProtoNumber(3) val mute: MuteMessage? = null
+    @ProtoNumber(3) val mute: MuteMessage? = null,
+    @ProtoNumber(4) val pluginSync: PluginSyncMessage? = null
 )
 

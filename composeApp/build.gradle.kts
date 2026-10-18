@@ -25,19 +25,18 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeMultiplatform)
-    alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.composeCompiler)
 }
 
-val androidCompat = project.hasProperty("micyou.androidCompat")
-val composeVersion = if (androidCompat) libs.versions.compat.composeMultiplatform.get() else libs.versions.composeMultiplatform.get()
-val composeMaterial3Version = if (androidCompat) libs.versions.compat.composeMaterial3.get() else libs.versions.composeMaterial3.get()
+val composeVersion = libs.versions.composeMultiplatform.get()
+val composeMaterial3Version = libs.versions.composeMaterial3.get()
 
 configurations.configureEach {
     resolutionStrategy.eachDependency {
         if (requested.group == "org.jetbrains.compose" || requested.group.startsWith("org.jetbrains.compose.")) {
             val name = requested.name
-            if (name == "material-icons-extended" || name == "material-icons-extended-desktop" ||
+            if (name == "material-icons-extended" || name == "material-icons-extended-desktop" || 
                 name == "material-icons-core" || name == "material-icons-core-desktop" ||
                 name == "material") {
                 useVersion("1.7.3")
@@ -49,71 +48,64 @@ configurations.configureEach {
                 useVersion(composeVersion)
             }
         }
-        if (androidCompat) {
-            when {
-                requested.group == "androidx.activity" -> useVersion(libs.versions.compat.androidx.activity.get())
-                requested.group == "androidx.lifecycle" -> useVersion(libs.versions.compat.androidx.lifecycle.get())
-                requested.group == "androidx.core" -> useVersion(libs.versions.compat.androidx.core.get())
-                requested.group == "io.ktor" -> useVersion(libs.versions.compat.ktor.get())
-                requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-coroutines") ->
-                    useVersion(libs.versions.compat.kotlinx.coroutines.get())
-                requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-serialization") ->
-                    useVersion(libs.versions.compat.kotlinx.serialization.get())
-            }
-        }
     }
 }
 
 kotlin {
-    androidTarget {
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_11)
-        }
-    }
+    androidTarget()
     
-    jvm {
-        mainRun {
-            mainClass.set("com.lanrhyme.micyou.MainKt")
+    jvm("jvm") {
+        compilations.all {
+            kotlinOptions.jvmTarget = "1.8"
         }
     }
     
     sourceSets {
-        androidMain.dependencies {
-            implementation(libs.compose.uiToolingPreview)
-            implementation(libs.androidx.activity.compose)
-            implementation(libs.ktor.client.okhttp)
+        val commonMain by getting {
+            dependencies {
+                implementation(libs.compose.runtime)
+                implementation(libs.compose.foundation)
+                implementation(libs.compose.material3)
+                implementation(libs.compose.ui)
+                implementation(libs.compose.components.resources)
+                implementation(libs.compose.uiToolingPreview)
+                implementation(libs.androidx.lifecycle.viewmodelCompose)
+                implementation(libs.androidx.lifecycle.runtimeCompose)
+                implementation(libs.ktor.network)
+                implementation(libs.ktor.client.core)
+                implementation(libs.ktor.client.content.negotiation)
+                implementation(libs.ktor.serialization.kotlinx.json)
+                implementation(libs.kotlinx.serialization.protobuf)
+                implementation(libs.kotlinx.datetime)
+                implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
+                implementation(project(":plugin-api"))
+            }
         }
-        commonMain.dependencies {
-            implementation(libs.compose.runtime)
-            implementation(libs.compose.foundation)
-            implementation(libs.compose.material3)
-            implementation(libs.compose.ui)
-            implementation(libs.compose.components.resources)
-            implementation(libs.compose.uiToolingPreview)
-            implementation(libs.androidx.lifecycle.viewmodelCompose)
-            implementation(libs.androidx.lifecycle.runtimeCompose)
-            implementation(libs.ktor.network)
-            implementation(libs.ktor.client.core)
-            implementation(libs.ktor.client.content.negotiation)
-            implementation(libs.ktor.serialization.kotlinx.json)
-            implementation(libs.kotlinx.serialization.protobuf)
-            implementation(libs.kotlinx.datetime)
-            implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
-            implementation("dev.chrisbanes.haze:haze:1.7.2")
+        val commonTest by getting {
+            dependencies {
+                implementation(libs.kotlin.test)
+            }
         }
-        commonTest.dependencies {
-            implementation(libs.kotlin.test)
+        val jvmMain by getting {
+            dependencies {
+                implementation(compose.desktop.currentOs)
+                implementation(libs.kotlinx.coroutinesSwing)
+                implementation(libs.kotlinx.serialization.protobuf)
+                implementation(libs.ktor.client.java)
+                implementation("de.maxhenkel.rnnoise4j:rnnoise4j:2.1.2")
+                implementation("io.ultreia:bluecove:2.1.1")
+                implementation(libs.composenativetray)
+                implementation(libs.onnxruntime)
+                implementation(libs.jtransforms)
+                implementation("dev.chrisbanes.haze:haze:1.7.2")
+            }
         }
-        jvmMain.dependencies {
-            implementation(compose.desktop.currentOs)
-            implementation(libs.kotlinx.coroutinesSwing)
-            implementation(libs.kotlinx.serialization.protobuf)
-            implementation(libs.ktor.client.java)
-            implementation("de.maxhenkel.rnnoise4j:rnnoise4j:2.1.2")
-            implementation("io.ultreia:bluecove:2.1.1")
-            implementation(libs.composenativetray)
-            implementation(libs.onnxruntime)
-            implementation(libs.jtransforms)
+        val androidMain by getting {
+            dependencies {
+                implementation(libs.androidx.activity.compose)
+                // Ktor HTTP引擎 - Android需要OkHttp引擎
+                implementation(libs.ktor.client.okhttp)
+            }
         }
     }
 }
@@ -122,14 +114,22 @@ android {
     namespace = "com.lanrhyme.micyou"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
+    sourceSets {
+        getByName("main") {
+            manifest.srcFile("src/androidMain/AndroidManifest.xml")
+        }
+    }
+
     defaultConfig {
         applicationId = "com.lanrhyme.micyou"
-        minSdk = (if (androidCompat) libs.versions.compat.android.minSdk.get() else libs.versions.android.minSdk.get()).toInt()
-        targetSdk = (if (androidCompat) libs.versions.compat.android.targetSdk.get() else libs.versions.android.targetSdk.get()).toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
+        targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = project.property("project.version.code").toString().toInt()
         versionName = project.property("project.version").toString()
-        if (androidCompat) {
-            multiDexEnabled = true
+
+        ndk {
+            // 32位架构支持 (Android 5.0 目标平台)
+            abiFilters += listOf("armeabi-v7a", "x86")
         }
     }
 
@@ -165,21 +165,22 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-        if (androidCompat) {
-            isCoreLibraryDesugaringEnabled = true
-        }
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 }
 
 dependencies {
-    implementation(libs.androidx.core.ktx)
-    debugImplementation(libs.compose.uiTooling)
-    if (androidCompat) {
-        coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:${libs.versions.compat.desugarJdkLibs.get()}")
-        implementation("androidx.multidex:multidex:${libs.versions.compat.multidex.get()}")
+    implementation(libs.androidx.core.ktx) {
+        exclude(group = "androidx.annotation", module = "annotation-experimental")
+        exclude(group = "androidx.core", module = "core-viewtree")
     }
+    debugImplementation(libs.compose.uiTooling)
 }
 
 compose.desktop {
@@ -629,4 +630,11 @@ tasks.register("packageNoJreAll") {
     description = "Creates all platform distributions without bundled JRE"
 
     dependsOn("packageWindowsNoJreZip", "packageLinuxNoJreTarGz", "packageMacosNoJreTarGz")
+}
+
+// 配置Kotlin Android编译选项
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
 }

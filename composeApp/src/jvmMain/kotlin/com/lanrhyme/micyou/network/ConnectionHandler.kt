@@ -25,6 +25,7 @@ class ConnectionHandler(
     private val output: ByteWriteChannel,
     private val onAudioPacketReceived: suspend (AudioPacketMessage) -> Unit,
     private val onMuteStateChanged: (Boolean) -> Unit,
+    private val onPluginSyncReceived: ((PluginSyncMessage) -> Unit)? = null,
     private val onError: (String) -> Unit
 ) {
     private val CHECK_1 = "MicYouCheck1"
@@ -148,6 +149,10 @@ class ConnectionHandler(
                 if (audioPacket != null) {
                     onAudioPacketReceived(audioPacket)
                 }
+                
+                if (wrapper.pluginSync != null && onPluginSyncReceived != null) {
+                    onPluginSyncReceived(wrapper.pluginSync)
+                }
             } catch (e: Exception) {
                 Logger.e("ConnectionHandler", "Failed to decode packet", e)
             }
@@ -159,6 +164,14 @@ class ConnectionHandler(
             sendChannel?.send(MessageWrapper(mute = MuteMessage(muted)))
         } catch (e: Exception) {
             Logger.e("ConnectionHandler", "Failed to send mute message", e)
+        }
+    }
+
+    suspend fun sendPluginSync(plugins: List<PluginInfoMessage>, platform: String) {
+        try {
+            sendChannel?.send(MessageWrapper(pluginSync = PluginSyncMessage(plugins, platform)))
+        } catch (e: Exception) {
+            Logger.e("ConnectionHandler", "Failed to send plugin sync message", e)
         }
     }
 

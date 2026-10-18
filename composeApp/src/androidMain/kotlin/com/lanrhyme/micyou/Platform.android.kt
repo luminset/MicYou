@@ -57,18 +57,3 @@ actual fun getAudioSourceOptions(): List<AudioSourceOption> {
     return AndroidAudioSource.getSupportedSources().map { AudioSourceOption(it.name, it.label) }
 }
 
-actual fun availableAudioFormats(): List<AudioFormat> {
-    val supportsFloat = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-    return AudioFormat.entries.filter { format ->
-        when (format) {
-            AudioFormat.PCM_FLOAT -> supportsFloat
-            else -> true
-        }
-    }
-}
-
-actual fun defaultAudioFormat(): AudioFormat {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) AudioFormat.PCM_FLOAT
-    else AudioFormat.PCM_16BIT
-}
-

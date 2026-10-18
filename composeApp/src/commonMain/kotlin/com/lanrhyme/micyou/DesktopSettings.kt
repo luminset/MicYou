@@ -1159,7 +1159,6 @@ fun SettingsContent(section: SettingsSection, viewModel: MainViewModel) {
                                 headlineContent = { Text(strings.audioFormatLabel) },
                                 trailingContent = {
                                     var expanded by remember { mutableStateOf(false) }
-                                    val formats = availableAudioFormats()
                                     Box {
                                         TextButton(
                                             onClick = { expanded = true },
@@ -1170,7 +1169,7 @@ fun SettingsContent(section: SettingsSection, viewModel: MainViewModel) {
                                             onDismissRequest = { expanded = false },
                                             shape = MaterialTheme.shapes.medium
                                         ) {
-                                            formats.forEach { format ->
+                                            AudioFormat.entries.forEach { format ->
                                                 DropdownMenuItem(text = { Text(format.label) }, onClick = { viewModel.setAudioFormat(format); expanded = false })
                                             }
                                         }

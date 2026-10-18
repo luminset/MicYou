@@ -41,14 +41,18 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Minimize
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.ripple.RippleAlpha
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -97,11 +101,7 @@ import com.lanrhyme.micyou.animation.rememberGlowAnimation
 import com.lanrhyme.micyou.animation.rememberPulseAnimation
 import com.lanrhyme.micyou.animation.rememberRotationAnimation
 import com.lanrhyme.micyou.animation.rememberWaveAnimation
-import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.delay
-import micyou.composeapp.generated.resources.Res
-import micyou.composeapp.generated.resources.icon_settings
-import org.jetbrains.compose.resources.painterResource
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
@@ -207,7 +207,6 @@ fun DesktopHome(
     Surface(
         color = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = RoundedCornerShape(22.dp),
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
@@ -250,7 +249,7 @@ fun DesktopHome(
                     delayMillis = 200,
                     modifier = Modifier.weight(0.8f).fillMaxHeight(),
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(16.dp),
                     cardOpacity = state.backgroundSettings.cardOpacity,
                     hazeState = hazeState,
                     enableHaze = state.backgroundSettings.enableHazeEffect
@@ -291,7 +290,7 @@ private fun AnimatedCard(
     delayMillis: Int,
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
-    shape: RoundedCornerShape = RoundedCornerShape(22.dp),
+    shape: RoundedCornerShape = RoundedCornerShape(16.dp),
     cardOpacity: Float = 1f,
     hazeState: HazeState? = null,
     enableHaze: Boolean = false,
@@ -418,7 +417,7 @@ private fun NetworkConfigCard(
                         DropdownMenu(
                             expanded = showIpList,
                             onDismissRequest = { showIpList = false },
-                            shape = RoundedCornerShape(16.dp)
+                            shape = MaterialTheme.shapes.medium
                         ) {
                             currentIps.forEach { ip ->
                                 DropdownMenuItem(
@@ -465,12 +464,12 @@ private fun NetworkConfigCard(
                         colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                         textStyle = MaterialTheme.typography.bodySmall,
                         singleLine = true,
-                        shape = RoundedCornerShape(16.dp)
+                        shape = MaterialTheme.shapes.medium
                     )
                     DropdownMenu(
                         expanded = expanded,
                         onDismissRequest = { expanded = false },
-                        shape = RoundedCornerShape(16.dp)
+                        shape = MaterialTheme.shapes.medium
                     ) {
                         DropdownMenuItem(
                             text = { Text(strings.modeWifi) },
@@ -1078,6 +1077,8 @@ private fun StatusControlPanel(
     strings: AppStrings
 ) {
     var contentVisible by remember { mutableStateOf(false) }
+    var showPluginPopup by remember { mutableStateOf(false) }
+    var activePluginWindow by remember { mutableStateOf<String?>(null) }
     
     LaunchedEffect(Unit) {
         delay(300)
@@ -1100,6 +1101,7 @@ private fun StatusControlPanel(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
             ) {
+                if (!state.useSystemTitleBar) {
                 AnimatedIconButton(
                     onClick = onMinimize,
                     content = {
@@ -1122,6 +1124,7 @@ private fun StatusControlPanel(
                         )
                     }
                 )
+                }
             }
         }
 
@@ -1191,7 +1194,7 @@ private fun StatusControlPanel(
                                         colors = CardDefaults.cardColors(
                                             containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
                                         ),
-                                        shape = RoundedCornerShape(8.dp)
+                                        shape = MaterialTheme.shapes.small
                                     ) {
                                         SelectionContainer {
                                             Text(
@@ -1266,13 +1269,47 @@ private fun StatusControlPanel(
                             tint = muteColor
                         )
                     }
+                    
+                    val enabledPlugins = state.plugins.filter { it.isEnabled }
+                    val pluginInteractionSource = remember { MutableInteractionSource() }
+                    val isPluginPressed by pluginInteractionSource.collectIsPressedAsState()
+                    val pluginScale by animateFloatAsState(
+                        targetValue = if (isPluginPressed) 0.85f else 1f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioHighBouncy)
+                    )
+                    val pluginColor by animateColorAsState(
+                        targetValue = if (enabledPlugins.isNotEmpty()) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        animationSpec = tween(300, easing = EasingFunctions.EaseInOutCubic)
+                    )
+                    
+                    BadgedBox(
+                        badge = {
+                            if (enabledPlugins.isNotEmpty()) {
+                                Badge { Text(enabledPlugins.size.toString()) }
+                            }
+                        }
+                    ) {
+                        IconButton(
+                            onClick = { showPluginPopup = true },
+                            interactionSource = pluginInteractionSource,
+                            modifier = Modifier.size(40.dp).scale(pluginScale)
+                        ) {
+                            Icon(
+                                Icons.Filled.Extension,
+                                contentDescription = strings.pluginsSection,
+                                modifier = Modifier.size(20.dp),
+                                tint = pluginColor
+                            )
+                        }
+                    }
 
                     AnimatedIconButton(
                         onClick = onOpenSettings,
                         modifier = Modifier.size(40.dp),
                         content = {
                             Icon(
-                                painter = painterResource(Res.drawable.icon_settings),
+                                Icons.Rounded.Settings,
                                 contentDescription = strings.settingsTitle,
                                 modifier = Modifier.size(20.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1281,6 +1318,34 @@ private fun StatusControlPanel(
                     )
                 }
             }
+        }
+        
+        // 显示插件窗口
+        activePluginWindow?.let { pluginId ->
+            OpenPluginWindow(
+                pluginId = pluginId,
+                viewModel = viewModel,
+                onClose = { activePluginWindow = null }
+            )
+        }
+        
+        if (showPluginPopup) {
+            PluginListPopup(
+                plugins = state.plugins,
+                onDismiss = { showPluginPopup = false },
+                onPluginClick = { plugin ->
+                    showPluginPopup = false
+                },
+                onOpenPluginWindow = { pluginId ->
+                    activePluginWindow = pluginId
+                    showPluginPopup = false
+                },
+                onOpenSettings = {
+                    showPluginPopup = false
+                    onOpenSettings()
+                },
+                viewModel = viewModel
+            )
         }
     }
 }
